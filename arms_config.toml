@@ -1,0 +1,33 @@
+#Main
+LAST_CHANNEL = 14
+TONE_DETECT_TIMEOUT = 100  # ms, initial detection of tones while scanning.
+MESSAGE_LOOP_SHORT_DELAY = 7  # seconds
+NUM_SHORT_DELAYS = 2
+MESSAGE_LOOP_LONG_DELAY = 300  # seconds
+CANCEL_HELP_TIMEOUT = 8  # seconds
+TRANSMIT_DELAY = 1.5  # seconds. Delay after activating PTT and before playing files.
+
+#hamlib
+RIGCTLD_ADDRESS = "127.0.0.1"
+RIGCTLD_PORT = 4532
+SWITCH_TO_MEM_MODE = true
+DISABLE_PTT = false
+RIGCTLD_OPERATION_TIMEOUT = 7  # seconds
+
+#LPZ detection
+LPZ_SAMPLING_PERIOD = 100  # ms
+LPZ_TOTAL_SAMPLES = 50  # number of samples
+LPZ_REQUIRED_ZERO_COUNT = 20  # number of positive samples to conclude LPZ
+LPZ_MAX_ZERO_COUNT = 250  # the number of samples that must be exceeded to conclude a false positive
+
+#Silence detection (before transmitting and before starting CANCEL_HELP_TIMEOUT)
+DCD_SAMPLING_PERIOD = 200  # ms
+DCD_REQ_CONSEC_ZEROES = 6 # number of consecutive DCD = 0 samples to conclude silence
+
+#Audio
+OUTPUT_AUDIO_DEVICE_SUBSTRING = "USB" # comment out to use default device (not recommended)
+
+#Debugging
+DEBUG_MODE = true
+DEBUG_OUTPUT_AUDIO_DEVICE_SUBSTRING = "pulse"
+USING_HAMLIB_DUMMY = true
