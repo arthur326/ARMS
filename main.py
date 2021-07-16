@@ -177,7 +177,7 @@ class ARMS:
     def _init_audio_io(self):
         for i in range(4):
             try:
-                player.set_default_io(None, self._cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING)
+                player.set_io(output_device=self._cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING)
             except Exception:
                 if i < 3:
                     sleep(3)
