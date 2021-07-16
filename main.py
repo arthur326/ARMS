@@ -25,18 +25,8 @@ class ARMS:
 
     def begin_operation(self):
         self._rigctlr.set_ptt(PTT.RX)
-        for i in range(4):
-            try:
-                player.set_default_io(None, self._cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING)
-            except Exception:
-                if i < 3:
-                    sleep(3)
-                else:
-                    raise
-        player.load(self._cfg.SYS_CALLING_HELP_PATH)
-        player.load(self._cfg.LPZ_DETECTED_PATH)
-        for ch in range(6, self._cfg.LAST_CHANNEL + 1):
-            player.load(self._repeater_name_path(ch))
+        self._init_audio_io()
+        self._load_audio_files()
         self._set_not_in_alert_flag(True)
 
         while True:
@@ -60,11 +50,11 @@ class ARMS:
 
     def _alert_procedure(self, ch: int):
         logger.info(f"Entering alert procedure; channel: {ch}.")
-        self._transmit_files(self._cfg.SYS_CALLING_HELP_PATH)
+        self._transmit_files(self._cfg.SYS_CALLING_HELP_PATH, call_sign=True)
         logger.info("Listening for cancellation via DTMF 3.")
         if self._wait_for_silence_and_tone(self._cfg.CANCEL_HELP_TIMEOUT, Tone.THREE) == Tone.THREE:
             logger.info("Tone 3 detected. Cancelling alert procedure.")
-            self._transmit_files(self._cfg.ALERT_CANCELLED_PATH, self._repeater_name_path(ch))
+            self._transmit_files(self._cfg.ALERT_CANCELLED_PATH, self._repeater_name_path(ch), call_sign=True)
             return
 
         self._rigctlr.switch_channel(1)
@@ -76,6 +66,11 @@ class ARMS:
             WAITING = auto()
         states_iter = cycle(State)
 
+        logger.info("Playing first message on channel 1.")
+        self._transmit_files(self._cfg.LPZ_DETECTED_PATH, self._repeater_name_path(ch)
+                             , beep=self.Beep.ASCENDING, call_sign=True)
+        next(states_iter)
+
         while True:
             state = next(states_iter)
             if state == State.PLAYING_INFO:
@@ -86,7 +81,7 @@ class ARMS:
                 tone = self._wait_for_tone(delays[delay_index], Tone.THREE, Tone.FIVE)
                 if tone == Tone.THREE:
                     logger.info("Tone 3 detected. Cancelling alert procedure.")
-                    self._transmit_files(self._cfg.ALERT_CANCELLED_PATH, self._repeater_name_path(ch))
+                    self._transmit_files(self._cfg.ALERT_CANCELLED_PATH, self._repeater_name_path(ch), call_sign=True)
                     return
                 elif tone == Tone.FIVE:
                     logger.info("Tone 5 detected. Repeating message on channel 1.")
@@ -95,7 +90,12 @@ class ARMS:
                     continue
                 delay_index = (delay_index + 1) % len(delays)
 
-    def _transmit_files(self, *filepaths):
+    class Beep(Enum):
+        NO_BEEP = auto()
+        ORDINARY = auto()
+        ASCENDING = auto()
+
+    def _transmit_files(self, *filepaths, beep: Beep = Beep.ORDINARY, call_sign: bool = False):
         logger.info(f"Waiting for silence. "
                     f"({self._cfg.DCD_REQ_CONSEC_ZEROES} consecutive zeroes,"
                     f" {self._cfg.DCD_SAMPLING_PERIOD} ms sampling period.)")
@@ -111,8 +111,14 @@ class ARMS:
         logger.info("Transmitting audio.")
         self._rigctlr.set_ptt(PTT.TX)
         sleep(self._cfg.TRANSMIT_DELAY)
+        if beep == self.Beep.ORDINARY:
+            player.play(self._cfg.BEEP_PATH)
+        elif beep == self.Beep.ASCENDING:
+            player.play(self._cfg.ASCENDING_BEEP_PATH)
         for path in filepaths:
             player.play(path)
+        if call_sign:
+            player.play(self._cfg.CALL_SIGN_PATH)
         self._rigctlr.set_ptt(PTT.RX)
 
     def _wait_for_silence_and_tone(self, timeout_seconds, *tones) -> Union[Tone, None]:
@@ -157,6 +163,26 @@ class ARMS:
 
     def _repeater_name_path(self, ch: int):
         return self._cfg.REPEATER_NAME_DIRECTORY / "{:02d}.wav".format(ch)
+
+    def _load_audio_files(self):
+        player.load(self._cfg.SYS_CALLING_HELP_PATH)
+        player.load(self._cfg.LPZ_DETECTED_PATH)
+        player.load(self._cfg.ALERT_CANCELLED_PATH)
+        player.load(self._cfg.BEEP_PATH)
+        player.load(self._cfg.ASCENDING_BEEP_PATH)
+        player.load(self._cfg.CALL_SIGN_PATH)
+        for ch in range(6, self._cfg.LAST_CHANNEL + 1):
+            player.load(self._repeater_name_path(ch))
+
+    def _init_audio_io(self):
+        for i in range(4):
+            try:
+                player.set_default_io(None, self._cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING)
+            except Exception:
+                if i < 3:
+                    sleep(3)
+                else:
+                    raise
 
     def _sleep_millis(self, millis: float):
         sleep(millis / 1000)
@@ -283,6 +309,9 @@ def parse_cfg(cfg_path):
     cfg.SYS_CALLING_HELP_PATH = cfg.AUDIO_DIRECTORY / "system_is_calling_help.wav"
     cfg.LPZ_DETECTED_PATH = cfg.AUDIO_DIRECTORY / "lpz_detected.wav"
     cfg.ALERT_CANCELLED_PATH = cfg.AUDIO_DIRECTORY / "alert_cancelled.wav"
+    cfg.BEEP_PATH = cfg.AUDIO_DIRECTORY / "beep.wav"
+    cfg.ASCENDING_BEEP_PATH = cfg.AUDIO_DIRECTORY / "ascending_beep.wav"
+    cfg.CALL_SIGN_PATH = cfg.AUDIO_DIRECTORY / "call_sign.wav"
     cfg.REPEATER_NAME_DIRECTORY = cfg.AUDIO_DIRECTORY / "repeater_name/"
 
     cfg.NOT_IN_ALERT_FLAG_PATH = Path("not_in_alert")
