@@ -3,6 +3,8 @@ import numpy
 import sounddevice
 import soundfile
 import samplerate as sr
+import lovely_logger as logging
+logger = logging.logger
 
 _loaded_files = {}
 _single_stream_data = SimpleNamespace(cur_stream=None, data_index=None)
@@ -24,7 +26,7 @@ def load(filepath):
     """
     Loads audio data into memory. Data in memory will be used instead of reading from disk unless unload is called.
     """
-    data, samplerate = _read_audio_data(filepath, converter_type='sinc_best')
+    data, samplerate = _read_audio_data(filepath)
     _loaded_files[filepath] = (data, samplerate)
 
 
@@ -39,9 +41,13 @@ def _read_audio_data(filepath, converter_type='sinc_medium'):
         sounddevice.check_output_settings(samplerate=samplerate)
     except Exception:
         output_device = sounddevice.default.device[1]
+        logger.warning(f"The {samplerate} Hz samplerate of {filepath} is unsupported by"
+                       f" {sounddevice.query_devices(output_device)['name']}."
+                       f" Resampling file.", exc_info=True)
         org_samplerate = samplerate
         samplerate = sounddevice.query_devices(output_device)['default_samplerate']
         data = sr.resample(data, samplerate/org_samplerate, converter_type=converter_type)
+        logger.info(f"{filepath} resampled at {samplerate} Hz. Converter type: {converter_type}.")
     return data, samplerate
 
 

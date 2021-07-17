@@ -1,7 +1,7 @@
 import threading
 from types import SimpleNamespace
 
-import lovely_logger as logger
+import lovely_logger as logging
 import time
 import toml
 from enum import Enum, auto
@@ -45,15 +45,15 @@ class ARMS:
             else:
                 self._cfg.NOT_IN_ALERT_FLAG_PATH.unlink()  # missing_ok argument requires python 3.8.
         except Exception:
-            logger.exception("Error " + ("creating" if not_in_alert else "removing") + " not_in_alert flag file."
+            logging.exception("Error " + ("creating" if not_in_alert else "removing") + " not_in_alert flag file."
                                                                                        " Continuing operation.")
 
     def _alert_procedure(self, ch: int):
-        logger.info(f"Entering alert procedure; channel: {ch}.")
+        logging.info(f"Entering alert procedure; channel: {ch}.")
         self._transmit_files(self._cfg.SYS_CALLING_HELP_PATH, call_sign=True)
-        logger.info("Listening for cancellation via DTMF 3.")
+        logging.info("Listening for cancellation via DTMF 3.")
         if self._wait_for_silence_and_tone(self._cfg.CANCEL_HELP_TIMEOUT, Tone.THREE) == Tone.THREE:
-            logger.info("Tone 3 detected. Cancelling alert procedure.")
+            logging.info("Tone 3 detected. Cancelling alert procedure.")
             self._transmit_files(self._cfg.ALERT_CANCELLED_PATH, self._repeater_name_path(ch), call_sign=True)
             return
 
@@ -66,7 +66,7 @@ class ARMS:
             WAITING = auto()
         states_iter = cycle(State)
 
-        logger.info("Playing first message on channel 1.")
+        logging.info("Playing first message on channel 1.")
         self._transmit_files(self._cfg.LPZ_DETECTED_PATH, self._repeater_name_path(ch)
                              , beep=self.Beep.ASCENDING, call_sign=True)
         next(states_iter)
@@ -74,17 +74,17 @@ class ARMS:
         while True:
             state = next(states_iter)
             if state == State.PLAYING_INFO:
-                logger.info("Playing message on channel 1.")
+                logging.info("Playing message on channel 1.")
                 self._transmit_files(self._cfg.LPZ_DETECTED_PATH, self._repeater_name_path(ch))
             elif state == State.WAITING:
-                logger.info("Awaiting command on channel 1.")
+                logging.info("Awaiting command on channel 1.")
                 tone = self._wait_for_tone(delays[delay_index], Tone.THREE, Tone.FIVE)
                 if tone == Tone.THREE:
-                    logger.info("Tone 3 detected. Cancelling alert procedure.")
+                    logging.info("Tone 3 detected. Cancelling alert procedure.")
                     self._transmit_files(self._cfg.ALERT_CANCELLED_PATH, self._repeater_name_path(ch), call_sign=True)
                     return
                 elif tone == Tone.FIVE:
-                    logger.info("Tone 5 detected. Repeating message on channel 1.")
+                    logging.info("Tone 5 detected. Repeating message on channel 1.")
                     states_iter = cycle(State)
                     delay_index = 0
                     continue
@@ -96,7 +96,7 @@ class ARMS:
         ASCENDING = auto()
 
     def _transmit_files(self, *filepaths, beep: Beep = Beep.ORDINARY, call_sign: bool = False):
-        logger.info(f"Waiting for silence. "
+        logging.info(f"Waiting for silence. "
                     f"({self._cfg.DCD_REQ_CONSEC_ZEROES} consecutive zeroes,"
                     f" {self._cfg.DCD_SAMPLING_PERIOD} ms sampling period.)")
         consec_dcd_0_count = 0
@@ -108,7 +108,7 @@ class ARMS:
             if consec_dcd_0_count >= self._cfg.DCD_REQ_CONSEC_ZEROES:
                 break
             self._sleep_millis(self._cfg.DCD_SAMPLING_PERIOD)
-        logger.info("Transmitting audio.")
+        logging.info("Transmitting audio.")
         self._rigctlr.set_ptt(PTT.TX)
         sleep(self._cfg.TRANSMIT_DELAY)
         if beep == self.Beep.ORDINARY:
@@ -152,10 +152,10 @@ class ARMS:
                     with status.cond:
                         status.awaiting_silence = False
                         status.cond.notify()
-                    logger.info("Tone detected before final timeout was started.")
+                    logging.info("Tone detected before final timeout was started.")
                     return tone
             else:
-                logger.info("Silence criteria reached. Starting final timeout.")
+                logging.info("Silence criteria reached. Starting final timeout.")
                 with status.cond:
                     timeout = status.deadline - time.time()
                 silence_waiting_thread.join()
@@ -321,10 +321,10 @@ def parse_cfg(cfg_path):
 
 if __name__ == '__main__':
     Path("logs/").mkdir(exist_ok=True)
-    logger.init("logs/log_file.log", level=logger.DEBUG)
+    logging.init("logs/log_file.log", level=logging.DEBUG)
     try:
         cfg = parse_cfg("arms_config.toml")
         arms = ARMS(cfg)
         arms.begin_operation()
     except TypeError:
-        logger.exception("Error parsing configuration.")
+        logging.exception("Error parsing configuration.")
