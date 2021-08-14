@@ -321,7 +321,7 @@ def parse_cfg(cfg_path):
 
 if __name__ == '__main__':
     Path("logs/").mkdir(exist_ok=True)
-    logging.init("logs/log_file.log", level=logging.DEBUG)
+    logging.init("logs/log_file.log", level=logging.INFO)
     try:
         cfg = parse_cfg("arms_config.toml")
         arms = ARMS(cfg)

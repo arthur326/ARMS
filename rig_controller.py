@@ -2,6 +2,9 @@ import socket
 from enum import Enum
 import re
 from typing import Dict
+import lovely_logger
+
+logger = lovely_logger.logger
 
 DEFAULT_TIMEOUT = 10  # seconds
 
@@ -65,7 +68,7 @@ class RigController:
                 raise BrokenPipeError('Socket closed before receiving command report from rigctld.')
             response.extend(data)
         response = response.decode()
-        print(response, end="")
+        logger.debug(response)
         RPRT = _get_RPRT(response)
         if RPRT != 0:
             raise ValueError(f"rigctld returned error code: {RPRT}")
