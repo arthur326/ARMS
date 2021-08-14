@@ -1,14 +1,26 @@
 import RPi.GPIO as GPIO
 from enum import Enum
 from typing import Union
+from time import sleep
+import atexit
 
 
 GPIO.setmode(GPIO.BCM)
+atexit.register(GPIO.cleanup)
 
 input_pin_nums = [17, 27, 22, 23, 24]  # [Q1, Q2, Q3, Q4, StQ]
-bin_digit_values = [1, 2, 4, 8]  # to have precomputed
+output_pin_num = 25  # Power supplied from GPIO pin to be able to reboot the chip.
+bin_digit_values = [1, 2, 4, 8]
 for i in input_pin_nums:
     GPIO.setup(i, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(output_pin_num, GPIO.OUT, initial=GPIO.HIGH)
+
+
+def reboot_chip():
+    GPIO.output(output_pin_num, GPIO.LOW)
+    sleep(0.6)
+    GPIO.output(output_pin_num, GPIO.HIGH)
+    sleep(0.4)
 
 
 # DTMF tones according to binary output of MT8770 chip.

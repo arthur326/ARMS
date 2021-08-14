@@ -12,7 +12,7 @@ from typing import Union
 from numbers import Real
 
 import player
-from dtmf_reader import read_dtmf, get_next_dtmf, Tone
+from dtmf_reader import read_dtmf, get_next_dtmf, Tone, reboot_chip as reboot_dtmf_chip
 from rig_controller import RigController, PTT
 
 
@@ -30,13 +30,17 @@ class ARMS:
         self._set_not_in_alert_flag(True)
 
         while True:
-            for ch in range(6, self._cfg.LAST_CHANNEL + 1):
-                self._rigctlr.switch_channel(ch)
-                if self._detect_tone(Tone.ZERO) == Tone.ZERO:
-                    self._set_not_in_alert_flag(False)
-                    if self._detect_lpz():
-                        self._alert_procedure(ch)
-                    self._set_not_in_alert_flag(True)
+            # Reboot chip every once in a while; not currently configurable since we are considering other options.
+            reboot_dtmf_chip()
+            CYCLES_BETWEEN_REBOOTS = 150
+            for i in range(CYCLES_BETWEEN_REBOOTS):
+                for ch in range(6, self._cfg.LAST_CHANNEL + 1):
+                    self._rigctlr.switch_channel(ch)
+                    if self._detect_tone(Tone.ZERO) == Tone.ZERO:
+                        self._set_not_in_alert_flag(False)
+                        if self._detect_lpz():
+                            self._alert_procedure(ch)
+                        self._set_not_in_alert_flag(True)
 
     def _set_not_in_alert_flag(self, not_in_alert: bool):
         try:
