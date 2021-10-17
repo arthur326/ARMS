@@ -1,6 +1,6 @@
 #Main
 LAST_CHANNEL = 14
-TONE_DETECT_TIMEOUT = 100  # ms, initial detection of tones while scanning.
+TONE_DETECT_REC_LENGTH = 100  # ms, lenth of recording to be analyzed during scanning before proceeding to next channel. Actual time spent on channel will be longer.
 MESSAGE_LOOP_SHORT_DELAY = 7  # seconds
 NUM_SHORT_DELAYS = 2
 MESSAGE_LOOP_LONG_DELAY = 300  # seconds
@@ -25,9 +25,12 @@ DCD_SAMPLING_PERIOD = 200  # ms
 DCD_REQ_CONSEC_ZEROES = 6 # number of consecutive DCD = 0 samples to conclude silence
 
 #Audio
-OUTPUT_AUDIO_DEVICE_SUBSTRING = "USB" # comment out to use default device (not recommended)
+#Comment out either line to use default device (not recommended)
+OUTPUT_AUDIO_DEVICE_SUBSTRING = "USB"
+INPUT_AUDIO_DEVICE_SUBSTRING = "USB"
 
 #Debugging
 DEBUG_MODE = true
 DEBUG_OUTPUT_AUDIO_DEVICE_SUBSTRING = "pulse"
+DEBUG_INPUT_ADUIO_DEVICE_SUBSTRING = "pulse"
 USING_HAMLIB_DUMMY = true

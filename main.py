@@ -11,8 +11,7 @@ from time import sleep
 from typing import Union
 from numbers import Real
 
-import player
-from dtmf_reader import read_dtmf, get_next_dtmf, Tone, reboot_chip as reboot_dtmf_chip
+from audio_utils import Tone, wait_for_dtmf, read_dtmf, load, init_io, play
 from rig_controller import RigController, PTT
 
 
@@ -29,18 +28,16 @@ class ARMS:
         self._load_audio_files()
         self._set_not_in_alert_flag(True)
 
+        logging.info("ARMS is beginning operation.")
+
         while True:
-            # Reboot chip every once in a while; not currently configurable since we are considering other options.
-            reboot_dtmf_chip()
-            CYCLES_BETWEEN_REBOOTS = 150
-            for i in range(CYCLES_BETWEEN_REBOOTS):
-                for ch in range(6, self._cfg.LAST_CHANNEL + 1):
-                    self._rigctlr.switch_channel(ch)
-                    if self._detect_tone(Tone.ZERO) == Tone.ZERO:
-                        self._set_not_in_alert_flag(False)
-                        if self._detect_lpz():
-                            self._alert_procedure(ch)
-                        self._set_not_in_alert_flag(True)
+            for ch in range(6, self._cfg.LAST_CHANNEL + 1):
+                self._rigctlr.switch_channel(ch)
+                if wait_for_dtmf(self._cfg.TONE_DETECT_REC_LENGTH/1000, Tone.ZERO) == Tone.ZERO:
+                    self._set_not_in_alert_flag(False)
+                    if self._detect_lpz():
+                        self._alert_procedure(ch)
+                    self._set_not_in_alert_flag(True)
 
     def _set_not_in_alert_flag(self, not_in_alert: bool):
         try:
@@ -82,7 +79,7 @@ class ARMS:
                 self._transmit_files(self._cfg.LPZ_DETECTED_PATH, self._repeater_name_path(ch))
             elif state == State.WAITING:
                 logging.info("Awaiting command on channel 1.")
-                tone = self._wait_for_tone(delays[delay_index], Tone.THREE, Tone.FIVE)
+                tone = wait_for_dtmf(delays[delay_index], Tone.THREE, Tone.FIVE)
                 if tone == Tone.THREE:
                     logging.info("Tone 3 detected. Cancelling alert procedure.")
                     self._transmit_files(self._cfg.ALERT_CANCELLED_PATH, self._repeater_name_path(ch), call_sign=True)
@@ -116,13 +113,13 @@ class ARMS:
         self._rigctlr.set_ptt(PTT.TX)
         sleep(self._cfg.TRANSMIT_DELAY)
         if beep == self.Beep.ORDINARY:
-            player.play(self._cfg.BEEP_PATH)
+            play(self._cfg.BEEP_PATH)
         elif beep == self.Beep.ASCENDING:
-            player.play(self._cfg.ASCENDING_BEEP_PATH)
+            play(self._cfg.ASCENDING_BEEP_PATH)
         for path in filepaths:
-            player.play(path)
+            play(path)
         if call_sign:
-            player.play(self._cfg.CALL_SIGN_PATH)
+            play(self._cfg.CALL_SIGN_PATH)
         self._rigctlr.set_ptt(PTT.RX)
 
     def _wait_for_silence_and_tone(self, timeout_seconds, *tones) -> Union[Tone, None]:
@@ -151,37 +148,43 @@ class ARMS:
         silence_waiting_thread.start()
         while True:
             if status.awaiting_silence:
-                tone = self._wait_for_tone(timeout_seconds, *tones)
+                tone = wait_for_dtmf(timeout_seconds, *tones)
                 if tone is not None:
                     with status.cond:
                         status.awaiting_silence = False
                         status.cond.notify()
                     logging.info("Tone detected before final timeout was started.")
+                    silence_waiting_thread.join()
                     return tone
             else:
                 logging.info("Silence criteria reached. Starting final timeout.")
                 with status.cond:
                     timeout = status.deadline - time.time()
                 silence_waiting_thread.join()
-                return self._wait_for_tone(max(timeout, 0), *tones)
+                return wait_for_dtmf(max(timeout, 0), *tones)
 
     def _repeater_name_path(self, ch: int):
         return self._cfg.REPEATER_NAME_DIRECTORY / "{:02d}.wav".format(ch)
 
     def _load_audio_files(self):
-        player.load(self._cfg.SYS_CALLING_HELP_PATH)
-        player.load(self._cfg.LPZ_DETECTED_PATH)
-        player.load(self._cfg.ALERT_CANCELLED_PATH)
-        player.load(self._cfg.BEEP_PATH)
-        player.load(self._cfg.ASCENDING_BEEP_PATH)
-        player.load(self._cfg.CALL_SIGN_PATH)
+        load(self._cfg.SYS_CALLING_HELP_PATH)
+        load(self._cfg.LPZ_DETECTED_PATH)
+        load(self._cfg.ALERT_CANCELLED_PATH)
+        load(self._cfg.BEEP_PATH)
+        load(self._cfg.ASCENDING_BEEP_PATH)
+        load(self._cfg.CALL_SIGN_PATH)
         for ch in range(6, self._cfg.LAST_CHANNEL + 1):
-            player.load(self._repeater_name_path(ch))
+            load(self._repeater_name_path(ch))
 
     def _init_audio_io(self):
+        """
+        Audio devices like to be unavailable through sounddevice the first time ARMS tries to use them after a reboot.
+        Thus, we try to initialize audio a few times before declaring defeat.
+        """
         for i in range(4):
             try:
-                player.set_io(output_device=self._cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING)
+                init_io(input_device=self._cfg.INPUT_AUDIO_DEVICE_SUBSTRING
+                        , output_device=self._cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING)
             except Exception:
                 if i < 3:
                     sleep(3)
@@ -202,26 +205,6 @@ class ARMS:
                 zero_count += 1
         return zero_count >= self._cfg.LPZ_REQUIRED_ZERO_COUNT and zero_count <= self._cfg.LPZ_MAX_ZERO_COUNT
 
-    def _wait_for_tone(self, timeout_seconds, *tones) -> Union[Tone, None]:
-        time_rem = timeout_seconds
-        while time_rem > 0:
-            start_time = time.time()
-            tone = get_next_dtmf(timeout_ms=max(int((time_rem * 1000)), 1))
-            if tone in tones:
-                return tone
-            time_rem -= (time.time() - start_time)
-        return None
-
-    def _detect_tone(self, *tones) -> bool:
-        """
-        Used to detect tones while scanning. Uses _wait_for_tone with TONE_DETECT_TIMEOUT but also checks for the
-        presence of a tone at the end on the off-chance that a tone appeared before waiting began.
-        """
-        tone = self._wait_for_tone(self._cfg.TONE_DETECT_TIMEOUT / 1000, *tones)
-        if tone not in tones:
-            tone = read_dtmf()
-        return tone if tone in tones else None
-
 
 def parse_cfg(cfg_path):
     cfg_dict = toml.load(cfg_path)
@@ -232,7 +215,7 @@ def parse_cfg(cfg_path):
             raise TypeError(exception_msg)
 
     cfg.LAST_CHANNEL = cfg_dict['LAST_CHANNEL']
-    cfg.TONE_DETECT_TIMEOUT = cfg_dict.get('TONE_DETECT_TIMEOUT')  # ms, initial detection of 0 timeout.
+    cfg.TONE_DETECT_REC_LENGTH = cfg_dict.get('TONE_DETECT_REC_LENGTH')  # ms, length of recording while scanning.
     cfg.MESSAGE_LOOP_SHORT_DELAY = cfg_dict.get('MESSAGE_LOOP_SHORT_DELAY', 5)  # seconds
     cfg.NUM_SHORT_DELAYS = cfg_dict.get('NUM_SHORT_DELAYS', 2)
     cfg.MESSAGE_LOOP_LONG_DELAY = cfg_dict.get('MESSAGE_LOOP_LONG_DELAY', 300)  # seconds
@@ -241,8 +224,8 @@ def parse_cfg(cfg_path):
                                         1.5)  # seconds. Delay after activating PTT and before playing files.
     verify_field(cfg.LAST_CHANNEL, lambda ch: isinstance(ch, int) and ch >= 6
                  , "LAST_CHANNEL must be an integer greater than or equal to 6.")
-    verify_field(cfg.TONE_DETECT_TIMEOUT, lambda t: isinstance(t, Real) and t > 0
-                 , "TONE_DETECT_TIMEOUT must be a positive number of milliseconds.")
+    verify_field(cfg.TONE_DETECT_REC_LENGTH, lambda t: isinstance(t, Real) and t > 0
+                 , "TONE_DETECT_REC_LENGTH must be a positive number of milliseconds.")
     verify_field(cfg.MESSAGE_LOOP_SHORT_DELAY, lambda d: isinstance(d, Real) and d >= 0
                  , "MESSAGE_LOOP_SHORT_DELAY must be a non-negative number of seconds.")
     verify_field(cfg.NUM_SHORT_DELAYS, lambda d: isinstance(d, int) and d >= 0
@@ -296,12 +279,18 @@ def parse_cfg(cfg_path):
     cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING = cfg_dict.get('OUTPUT_AUDIO_DEVICE_SUBSTRING', None)
     verify_field(cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING, lambda s: s is None or isinstance(s, str)
                  , "OUTPUT_AUDIO_DEVICE_SUBSTRING must be a string or left unspecified.")
+    cfg.INPUT_AUDIO_DEVICE_SUBSTRING = cfg_dict.get('INPUT_AUDIO_DEVICE_SUBSTRING', None)
+    verify_field(cfg.INPUT_AUDIO_DEVICE_SUBSTRING, lambda s: s is None or isinstance(s, str)
+                 , "INPUT_AUDIO_DEVICE_SUBSTRING must be a string or left unspecified.")
 
     cfg.DEBUG_MODE = cfg_dict.get('DEBUG_MODE', False)
     if cfg.DEBUG_MODE:
         cfg.DEBUG_OUTPUT_AUDIO_DEVICE_SUBSTRING = cfg_dict.get('DEBUG_OUTPUT_AUDIO_DEVICE_SUBSTRING', None)
         if cfg.DEBUG_OUTPUT_AUDIO_DEVICE_SUBSTRING is not None:
             cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING = cfg.DEBUG_OUTPUT_AUDIO_DEVICE_SUBSTRING
+        cfg.DEBUG_INPUT_AUDIO_DEVICE_SUBSTRING = cfg_dict.get('DEBUG_INPUT_AUDIO_DEVICE_SUBSTRING', None)
+        if cfg.DEBUG_OUTPUT_AUDIO_DEVICE_SUBSTRING is not None:
+            cfg.INPUT_AUDIO_DEVICE_SUBSTRING = cfg.DEBUG_INPUT_AUDIO_DEVICE_SUBSTRING
         cfg.USING_HAMLIB_DUMMY = cfg_dict.get('USING_HAMLIB_DUMMY', False)
         if cfg.USING_HAMLIB_DUMMY:
             cfg.SWITCH_TO_MEM_MODE = False
@@ -328,7 +317,10 @@ if __name__ == '__main__':
     logging.init("logs/log_file.log", level=logging.INFO)
     try:
         cfg = parse_cfg("arms_config.toml")
+        if cfg.DEBUG_MODE:
+            logging.logger.setLevel(logging.DEBUG)
         arms = ARMS(cfg)
         arms.begin_operation()
     except TypeError:
         logging.exception("Error parsing configuration.")
+        raise
