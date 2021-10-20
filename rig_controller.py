@@ -38,17 +38,17 @@ class RigController:
         self.sct = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sct.connect((address, port))
         self.sct.settimeout(timeout)
+        self.disable_ptt = disable_ptt
         if switch_to_mem_mode:
             self._switch_to_memory_mode()
-        if disable_ptt:
-            self.set_ptt = lambda ptt: None
 
     def __del__(self):
         self.sct.shutdown(socket.SHUT_RDWR)
         self.sct.close()
 
     def set_ptt(self, ptt: PTT):
-        self._send_command(f"\\set_ptt {ptt.value}")
+        if not self.disable_ptt:
+            self._send_command(f"\\set_ptt {ptt.value}")
 
     def switch_channel(self, channel: int):
         self._send_command(f"\\set_mem {channel}")
