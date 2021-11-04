@@ -1,3 +1,4 @@
+import atexit
 import re
 from enum import Enum, auto
 from io import TextIOWrapper
@@ -9,7 +10,7 @@ import numpy
 import sounddevice
 import soundfile
 import samplerate as sr
-from subprocess import Popen, PIPE, STDOUT
+from subprocess import Popen, PIPE, STDOUT, DEVNULL
 from time import time, sleep
 import lovely_logger as logging
 logger = logging.logger
@@ -17,9 +18,8 @@ logger = logging.logger
 _loaded_files = {}
 _out_stream_data = SimpleNamespace(stream=None, cond=Condition(), playing_data=False, data=None, data_index=None)
 
-""" TODO: create reference subprocess if it is possible to fork it; or possibly an unused process to make text section
- cached; or make a queue of processes.
- """
+_subprocess_copy = Popen(["multimon-ng", "-a", "DTMF", "-"], stdout=DEVNULL, stdin=PIPE, stderr=DEVNULL)
+atexit.register(_subprocess_copy.kill)
 _in_stream_data = SimpleNamespace(stream=None, lock=RLock(), piping_data=False, remaining_frames=0, proc=None)
 _DETECTED_DTMF_PATTERN = re.compile(r"DTMF\s*:\s*(?P<value>[0-9A-D#*])\s*")
 _SAFETY_WAIT_BUFFER = 0.005
@@ -102,7 +102,7 @@ def _get_audio_data(filepath):
 
 
 def abort_playback():
-    # Starvation could occur if lock is not FIFO here, though would still be unlikely.
+    # Starvation could occur if lock is not FIFO here though would still be unlikely.
     with _out_stream_data.cond:
         _out_stream_data.playing_data = False
         _out_stream_data.cond.notify_all()
@@ -143,8 +143,8 @@ def _out_stream_callback(outdata: numpy.ndarray, frames: int,
         i = _out_stream_data.data_index
         data = _out_stream_data.data
         frames_available = len(data) - i
-        # Need to assign to view of transpose of outdata in case mono data needs to be broadcasted to two channels.
-        outdata[:min(frames, frames_available)].transpose()[:] = data[i:(i+min(frames, frames_available))]
+        # Need to perform assignment with transposes in case mono data needs to be broadcasted to two channels.
+        outdata[:min(frames, frames_available)].transpose()[:] = data[i:(i+min(frames, frames_available))].transpose()
         if frames >= frames_available:
             outdata[frames_available:] = 0
             _out_stream_data.playing_data = False
@@ -181,28 +181,47 @@ def _in_stream_callback(indata: numpy.ndarray, frames: int,
             _in_stream_data.proc.stdin.close()
 
 
-def wait_for_dtmf(max_rec_length=None, *tones) -> Union[Tone, None]:
+def wait_for_dtmf_seq_predicate(max_rec_length=None, predicate=lambda s: True, max_seq_length=5, ignore_repeat_tones=False) -> Union[str, None]:
+    """
+    Await a sequence of DTMF tones satisfying the provided predicate. If multiple matched become immediately available,
+    the longest will be returned. An E will be present in the string before the first tone received if fewer than
+    max_seq_length have been received.
+    :param int max_seq_length: the number of most recent tones retained and examined for sequences matching the predicate.
+    Matching sequences may be any non-empty substring of the retained sequence.
+    :param Real max_rec_length: maximum amount of audio data to be analyzed, in seconds. None specifies unlimited.
+    :param bool ignore_repeat_tones: if true, detected tones that are the same as the one most recently received will
+    not be appended to the retained sequence of tones being analyzed for matches.
+    """
     input_latency = _in_stream_data.stream.latency
     earliest_start = time() + input_latency + _SAFETY_WAIT_BUFFER
     if _in_stream_data.proc is not None:
         _in_stream_data.proc.kill()
     _in_stream_data.proc = Popen(["multimon-ng", "-a", "DTMF", "-"], stdout=PIPE, stdin=PIPE, stderr=STDOUT)
     wait_time = earliest_start - time()
-    #print(f"Input latency: {(input_latency*1000)} ms; wait_time: {wait_time}")
     if wait_time > 0:
         sleep(wait_time)
     _in_stream_data.remaining_frames = None if max_rec_length is None\
         else ceil(max_rec_length * _in_stream_data.stream.samplerate)
     _in_stream_data.piping_data = True
     stdout = TextIOWrapper(_in_stream_data.proc.stdout, encoding="utf-8")
+    current_seq = "E" * max_seq_length
     while True:
         line = stdout.readline()
         if line == "":
             return None
         match = _DETECTED_DTMF_PATTERN.match(line)
         if match is not None:
-            tone = Tone(value=match.group("value"))
-            if len(tones) > 0 and tone not in tones:
+            tone_char = match.group("value")
+            if ignore_repeat_tones and tone_char == current_seq[len(current_seq) - 1]:
+                continue
+            current_seq = current_seq[1:] + tone_char
+            matching_seq = None
+            for i in range(max_seq_length):
+                candidate_seq = current_seq[i:]
+                if predicate(candidate_seq):
+                    matching_seq = candidate_seq
+                    break
+            if matching_seq is None:
                 continue
             _in_stream_data.remaining_frames = 0  # Tell stream callback to stop in case we get starved acquiring lock.
             kill_process = False
@@ -212,8 +231,22 @@ def wait_for_dtmf(max_rec_length=None, *tones) -> Union[Tone, None]:
                     _in_stream_data.piping_data = False
             if kill_process:
                 _in_stream_data.proc.kill()
-            return tone
+                _in_stream_data.proc = None
+            return matching_seq
+
+
+def wait_for_dtmf_seq(max_rec_length=None, ignore_repeat_tones=False, *seqs) -> Union[str, None]:
+    return wait_for_dtmf_seq_predicate(max_rec_length=max_rec_length, predicate=lambda s: s in seqs
+                                       , max_seq_length=max(map(lambda s: len(s), seqs))
+                                       , ignore_repeat_tones=ignore_repeat_tones)
+
+
+def wait_for_dtmf_tone(max_rec_length=None, *tones) -> Union[Tone, None]:
+    result = wait_for_dtmf_seq_predicate(max_rec_length, lambda s: s in map(lambda tone: tone.value, tones)
+                                                         if len(tones) > 0 else lambda s: True
+                                         , max_seq_length=1)
+    return None if result is None else Tone(result)
 
 
 def read_dtmf():
-    return wait_for_dtmf(0.040)
+    return wait_for_dtmf_tone(0.040)

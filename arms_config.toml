@@ -1,10 +1,11 @@
 #Main
 LAST_CHANNEL = 14
-TONE_DETECT_REC_LENGTH = 100  # ms, lenth of recording to be analyzed during scanning before proceeding to next channel. Actual time spent on channel will be longer.
+TONE_DETECT_REC_LENGTH = 50  # ms, at least 50. Length of recording to be analyzed during scanning before proceeding to next channel. Actual time spent on channel will be longer.
 MESSAGE_LOOP_SHORT_DELAY = 7  # seconds
 NUM_SHORT_DELAYS = 2
 MESSAGE_LOOP_LONG_DELAY = 300  # seconds
-CANCEL_HELP_TIMEOUT = 8  # seconds
+CANCEL_HELP_TIMEOUT = 8  # seconds. Currently not used since cancellation by caller was removed. May be deleted soon.
+OPERATOR_ID_TIMEOUT = 7 # seconds. Time to enter the 3-digit operator code after entering "*#".
 TRANSMIT_DELAY = 1.5  # seconds. Delay after activating PTT and before playing files.
 
 #hamlib
@@ -15,10 +16,10 @@ DISABLE_PTT = false
 RIGCTLD_OPERATION_TIMEOUT = 7  # seconds
 
 #LPZ detection
-LPZ_SAMPLING_PERIOD = 100  # ms
+LPZ_SAMPLING_PERIOD = 100  # ms, at least 100.
 LPZ_TOTAL_SAMPLES = 50  # number of samples
 LPZ_REQUIRED_ZERO_COUNT = 20  # number of positive samples to conclude LPZ
-LPZ_MAX_ZERO_COUNT = 250  # the number of samples that must be exceeded to conclude a false positive
+LPZ_MAX_ZERO_COUNT = 250  # the number of samples that must be exceeded to conclude a false positive. Set higher than LPZ_TOTAL_SAMPLES to disable false positives.
 
 #Silence detection (before transmitting and before starting CANCEL_HELP_TIMEOUT)
 DCD_SAMPLING_PERIOD = 200  # ms
@@ -34,3 +35,50 @@ DEBUG_MODE = true
 DEBUG_OUTPUT_AUDIO_DEVICE_SUBSTRING = "pulse"
 DEBUG_INPUT_ADUIO_DEVICE_SUBSTRING = "pulse"
 USING_HAMLIB_DUMMY = true
+
+[PARAGRAPHS]
+# File paths are taken relative to the audio directory. For example, "call_sign.wav" corresponds to "audio/call_sign.wav".
+ADVISE_CALLER_HEARD = ["beep.wav", "system_is_calling_help.wav", "call_sign.wav"]
+INITIAL_ALERT = ["ascending_beep.wav", "call_sign.wav", "lpz_detected.wav"]
+IC_DEFINED = ["all_stations_standby.wav"]
+SHORT_DELAY = ["1_minute_delay.wav", "remain_on_frequency.wav"]
+MODERATE_DELAY = ["10_minute_delay.wav", "remain_on_frequency.wav"]
+LONG_DELAY = ["20_minute_delay.wav", "remain_on_frequency.wav"]
+ALERT_CANCELLED = ["alert_handled.wav"]
+ARMS_RETURNING_NORMAL_OP = ["ARMS_returning_normal_op.wav", "call_sign.wav"]
+IC_CODE_INVALID = ["invalid_operator.wav"]
+IC_CODE_TIMED_OUT = ["timed_out.wav"]
+TESTING = ["testing.wav", "call_sign.wav"]
+INVALID_OPERATOR_CODE = ["invalid_operator.wav"]
+ENTER_OPERATOR_CODE = ["enter_operator_code.wav"]
+
+[OPERATORS]
+016 = true  # K7AA
+038 = true  # AF7YX
+050 = true  # W7RJA
+072 = true  # KJ7PUX
+094 = false
+
+216 = false
+238 = false
+250 = false
+272 = false
+294 = false
+
+416 = false
+438 = false
+450 = false
+472 = false
+494 = false
+
+616 = false
+638 = false
+650 = false
+672 = false
+694 = false
+
+816 = false
+838 = false
+850 = false
+872 = false
+894 = false
