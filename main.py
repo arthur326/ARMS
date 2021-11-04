@@ -35,10 +35,15 @@ class ARMS:
         while True:
             for ch in range(6, self._cfg.LAST_CHANNEL + 1):
                 self._rigctlr.switch_channel(ch)
-                if wait_for_dtmf_tone(self._cfg.TONE_DETECT_REC_LENGTH/1000, Tone.ZERO) == Tone.ZERO:
+                tone = wait_for_dtmf_tone(self._cfg.TONE_DETECT_REC_LENGTH/1000, Tone.ZERO, Tone.HASH)
+                if tone is not None:
                     self._set_not_in_alert_flag(False)
-                    if self._detect_lpz():
-                        self._alert_procedure(ch)
+                    if self._detect_long_tone(tone):
+                        if tone == Tone.ZERO:
+                            self._alert_procedure(ch)
+                        elif tone == Tone.HASH:
+                            self._test_procedure(ch)
+                        logging.info("Returning to normal (scanning) operation.")
                     self._set_not_in_alert_flag(True)
 
     def _set_not_in_alert_flag(self, not_in_alert: bool):
@@ -183,6 +188,23 @@ class ARMS:
                     logging.info("An operator was not successfully set as IC. ARMS will remain in its existing state.")
                 cur_looping_data.delay_index = (cur_looping_data.delay_index + 1) % len(cur_looping_data.delays)
 
+    def _test_procedure(self, ch):
+        logging.info(f"Entering test procedure on channel {ch}.")
+        self._transmit_files(*self._cfg.PARAGRAPHS.ENTER_OPERATOR_CODE)
+        if wait_for_dtmf_seq(5, False, "*#") == "*#":
+            op_id = self._detect_op_id()
+            if op_id not in {None, False} and self._cfg.OPERATORS[op_id]:
+                logging.info(f"Valid and active ID detected: {op_id}. Transmitting testing message on calling channel.")
+                self._transmit_files(self._operator_name_path(op_id), *self._cfg.PARAGRAPHS.TESTING)
+                logging.info("Transmitting testing message on alert channel.")
+                self._rigctlr.switch_channel(1)
+                self._transmit_files(self._operator_name_path(op_id), *self._cfg.PARAGRAPHS.TESTING)
+            else:
+                logging.info("No valid and active ID detected. Transmitting message indicating this.")
+                self._transmit_files(*self._cfg.PARAGRAPHS.INVALID_OPERATOR_CODE)
+        else:
+            self._transmit_files(*self._cfg.PARAGRAPHS.IC_CODE_TIMED_OUT)
+
     def _transmit_files(self, *filepaths):
         self._wait_for_silence()
         logging.info("Transmitting audio.")
@@ -287,16 +309,16 @@ class ARMS:
     def _sleep_millis(self, millis: float):
         sleep(millis / 1000)
 
-    def _detect_lpz(self) -> bool:
-        zero_count = 0
+    def _detect_long_tone(self, tone: Tone):
+        pos_sample_count = 0
         start_time = time.time()
-        for i in range(self._cfg.LPZ_TOTAL_SAMPLES):
-            sleep_ms = i * self._cfg.LPZ_SAMPLING_PERIOD - 1000 * (time.time() - start_time)
+        for i in range(self._cfg.LONG_TONE_TOTAL_SAMPLES):
+            sleep_ms = i * self._cfg.LONG_TONE_SAMPLING_PERIOD - 1000 * (time.time() - start_time)
             if sleep_ms > 0:
                 self._sleep_millis(sleep_ms)
-            if read_dtmf() == Tone.ZERO:
-                zero_count += 1
-        return zero_count >= self._cfg.LPZ_REQUIRED_ZERO_COUNT and zero_count <= self._cfg.LPZ_MAX_ZERO_COUNT
+            if read_dtmf() == tone:
+                pos_sample_count += 1
+        return pos_sample_count >= self._cfg.LONG_TONE_REQUIRED_POSITIVE_SAMPLES and pos_sample_count <= self._cfg.LONG_TONE_MAX_POSITIVE_SAMPLES
 
     def _detect_op_id(self) -> Union[int, bool, None]:
         op_id_regex = re.compile(r"[^\d]?\d{1,3}")
@@ -383,20 +405,20 @@ def parse_cfg(cfg_path):
     verify_field(cfg.RIGCTLD_OPERATION_TIMEOUT, lambda t: isinstance(t, Real) and t > 0
                  , "RIGCTLD_OPERATION_TIMEOUT must be a positive number of seconds.")
 
-    cfg.LPZ_SAMPLING_PERIOD = cfg_dict.get('LPZ_SAMPLING_PERIOD')  # ms
-    cfg.LPZ_TOTAL_SAMPLES = cfg_dict.get('LPZ_TOTAL_SAMPLES')  # number of samples
-    cfg.LPZ_REQUIRED_ZERO_COUNT = cfg_dict.get('LPZ_REQUIRED_ZERO_COUNT')  # number of positive samples to conclude LPZ
-    cfg.LPZ_MAX_ZERO_COUNT = cfg_dict.get(
-        'LPZ_MAX_ZERO_COUNT')  # the number of samples that must be exceeded to conclude a false positive
+    cfg.LONG_TONE_SAMPLING_PERIOD = cfg_dict.get('LONG_TONE_SAMPLING_PERIOD')  # ms
+    cfg.LONG_TONE_TOTAL_SAMPLES = cfg_dict.get('LONG_TONE_TOTAL_SAMPLES')  # number of samples
+    cfg.LONG_TONE_REQUIRED_POSITIVE_SAMPLES = cfg_dict.get('LONG_TONE_REQUIRED_POSITIVE_SAMPLES')  # number of positive samples to conclude LPZ
+    cfg.LONG_TONE_MAX_POSITIVE_SAMPLES = cfg_dict.get(
+        'LONG_TONE_MAX_POSITIVE_SAMPLES')  # the number of samples that must be exceeded to conclude a false positive
 
-    verify_field(cfg.LPZ_SAMPLING_PERIOD, lambda t: isinstance(t, Real) and t >= 100
-                 , "LPZ_SAMPLING_PERIOD must be a number of milliseconds greater than or equal to 100.")
-    verify_field(cfg.LPZ_TOTAL_SAMPLES, lambda n: isinstance(n, int) and n > 0
-                 , "LPZ_TOTAL_SAMPLES must be a positive integer.")
-    verify_field(cfg.LPZ_REQUIRED_ZERO_COUNT, lambda n: isinstance(n, int) and n > 0
-                 , "LPZ_REQUIRED_ZERO_COUNT must be a positive integer.")
-    verify_field(cfg.LPZ_MAX_ZERO_COUNT, lambda n: isinstance(n, int) and n > 0
-                 , "LPZ_MAX_ZERO_COUNT must be a positive integer.")
+    verify_field(cfg.LONG_TONE_SAMPLING_PERIOD, lambda t: isinstance(t, Real) and t >= 100
+                 , "LONG_TONE_SAMPLING_PERIOD must be a number of milliseconds greater than or equal to 100.")
+    verify_field(cfg.LONG_TONE_TOTAL_SAMPLES, lambda n: isinstance(n, int) and n > 0
+                 , "LONG_TONE_TOTAL_SAMPLES must be a positive integer.")
+    verify_field(cfg.LONG_TONE_REQUIRED_POSITIVE_SAMPLES, lambda n: isinstance(n, int) and n > 0
+                 , "LONG_TONE_REQUIRED_POSITIVE_SAMPLES must be a positive integer.")
+    verify_field(cfg.LONG_TONE_MAX_POSITIVE_SAMPLES, lambda n: isinstance(n, int) and n > 0
+                 , "LONG_TONE_MAX_POSITIVE_SAMPLES must be a positive integer.")
 
     cfg.DCD_SAMPLING_PERIOD = cfg_dict.get('DCD_SAMPLING_PERIOD', 200)  # ms
     cfg.DCD_REQ_CONSEC_ZEROES = cfg_dict.get('DCD_REQ_CONSEC_ZEROES',
