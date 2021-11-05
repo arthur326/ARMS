@@ -152,7 +152,7 @@ class ARMS:
             elif state == State.WAITING:
                 logging.info("Awaiting command on channel 1.")
                 seq = wait_for_dtmf_seq(cur_looping_data.delays[cur_looping_data.delay_index], False
-                                         , "111", "222", "333", "444", "000", "*#")
+                                         , "111", "222", "333", "444", "000", "*")
                 if seq == "000":
                     logging.info("000 detected. Cancelling alert procedure.")
                     logging.info("Acknowledging cancellation on alert channel.")
@@ -177,8 +177,8 @@ class ARMS:
                     logging.info("444 detected. Initiating long delay announcements.")
                     set_looping_data(LoopingBehavior.HANDLING_DELAY_LONG)
                     continue
-                elif seq == "*#":
-                    logging.info("*# detected. Initiating operator identification.")
+                elif seq == "*":
+                    logging.info("* detected. Initiating operator identification.")
                     id = self._detect_op_id()
                     if id is None:
                         logging.info("Timeout reached while listening for operator ID.")
@@ -202,7 +202,7 @@ class ARMS:
     def _test_procedure(self, ch):
         logging.info(f"Entering test procedure on channel {ch}.")
         self._transmit_files(*self._cfg.PARAGRAPHS.ENTER_OPERATOR_CODE)
-        if wait_for_dtmf_seq(10, False, "*#") == "*#":
+        if wait_for_dtmf_tone(15, Tone.STAR) == Tone.STAR:
             op_id = self._detect_op_id()
             if op_id not in {None, False} and self._cfg.OPERATORS[op_id]:
                 logging.info(f"Valid and active ID detected: {op_id}. Transmitting testing message on calling channel.")
@@ -332,23 +332,21 @@ class ARMS:
         return pos_sample_count >= self._cfg.LONG_TONE_REQUIRED_POSITIVE_SAMPLES and pos_sample_count <= self._cfg.LONG_TONE_MAX_POSITIVE_SAMPLES
 
     def _detect_op_id(self) -> Union[int, bool, None]:
-        op_id_regex = re.compile(r"[^\d]?\d{1,3}")
+        op_id_regex = re.compile(r"#\d{1,3}")
 
         def validity(s: str) -> Union[int, bool, None]:
             if op_id_regex.match(s) is None:
                 return None
-            if not s[0].isdigit():
-                substr = s[1:]
-                if len(substr) == 1 and int(substr) % 2 == 1:
-                    return False
-                if len(substr) == 2 and int(substr[1]) % 2 == 0:
-                    return False
-            elif len(s) == 3:
-                id = int(s)
-                return id if valid_id(id) else False
-            return None
+            substr = s[1:]
+            if len(substr) == 1 and int(substr) % 2 == 1:
+                return False
+            elif len(substr) == 2 and int(substr[1]) % 2 == 0:
+                return False
+            elif len(substr) == 3:
+                op_id = int(substr)
+                return op_id if valid_id(op_id) else False
 
-        match = wait_for_dtmf_seq_predicate(max_rec_length=self._cfg.OPERATOR_ID_TIMEOUT, max_seq_length=3
+        match = wait_for_dtmf_seq_predicate(max_rec_length=self._cfg.OPERATOR_ID_TIMEOUT, max_seq_length=4
                                            , ignore_repeat_tones=True
                                            , predicate=lambda s: validity(s) is not None)
         return validity(match) if match is not None else None
