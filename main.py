@@ -115,11 +115,11 @@ class ARMS:
         def ic_defined_transmit_procedure(op_id: int):
             self._transmit_files(*self._cfg.PARAGRAPHS.IC_DEFINED, self._operator_name_path(op_id))
 
-        delays_dict = {LoopingBehavior.INITIAL_ALERT: [self._cfg.MESSAGE_LOOP_SHORT_DELAY] * self._cfg.NUM_SHORT_DELAYS + [self._cfg.MESSAGE_LOOP_LONG_DELAY]
-            , LoopingBehavior.HANDLING_DELAY_SHORT: [60]
-            , LoopingBehavior.HANDLING_DELAY_MODERATE: [120]
-            , LoopingBehavior.HANDLING_DELAY_LONG: [120]
-            , LoopingBehavior.IC_DEFINED: [120]}
+        delays_dict = {LoopingBehavior.INITIAL_ALERT: [self._cfg.INITIAL_ALERT_SHORT_DELAY_LENGTH] * self._cfg.INITIAL_ALERT_NUM_SHORT_DELAYS + [self._cfg.INITIAL_ALERT_LONG_DELAY_LENGTH]
+            , LoopingBehavior.HANDLING_DELAY_SHORT: [self._cfg.SHORT_DELAY_MESSAGE_LOOP_LENGTH]
+            , LoopingBehavior.HANDLING_DELAY_MODERATE: [self._cfg.MODERATE_DELAY_MESSAGE_LOOP_LENGTH]
+            , LoopingBehavior.HANDLING_DELAY_LONG: [self._cfg.LONG_DELAY_MESSAGE_LOOP_LENGTH]
+            , LoopingBehavior.IC_DEFINED: [self._cfg.IC_DEFINED_MESSAGE_LOOP_LENGTH]}
 
         info_transmit_procedure_dict = {LoopingBehavior.INITIAL_ALERT: init_alert_transmit_procedure
                                         , LoopingBehavior.IC_DEFINED: ic_defined_transmit_procedure}
@@ -202,7 +202,7 @@ class ARMS:
     def _test_procedure(self, ch):
         logging.info(f"Entering test procedure on channel {ch}.")
         self._transmit_files(*self._cfg.PARAGRAPHS.ENTER_OPERATOR_CODE)
-        if wait_for_dtmf_tone(15, Tone.STAR) == Tone.STAR:
+        if wait_for_dtmf_tone(self._cfg.TESTING_STAR_DETECT_TIMEOUT, Tone.STAR) == Tone.STAR:
             op_id = self._detect_op_id()
             if op_id not in {None, False} and self._cfg.OPERATORS[op_id]:
                 logging.info(f"Valid and active ID detected: {op_id}. Transmitting testing message on calling channel.")
@@ -210,10 +210,14 @@ class ARMS:
                 logging.info("Transmitting testing message on alert channel.")
                 self._rigctlr.switch_channel(1)
                 self._transmit_files(self._operator_name_path(op_id), *self._cfg.PARAGRAPHS.TESTING)
-            else:
-                logging.info("No valid and active ID detected. Transmitting message indicating this.")
+            elif op_id is False:
+                logging.info("Invalid or inactive ID detected. Transmitting message indicating this.")
                 self._transmit_files(*self._cfg.PARAGRAPHS.TESTING_CODE_INVALID)
+            elif op_id is None:
+                logging.info("Timed out before detecting pound and operator code. Transmitting message indicating this.")
+                self._transmit_files(*self._cfg.PARAGRAPHS.TESTING_CODE_TIMED_OUT)
         else:
+            logging.info("Timed out before detecting '*'. Transmitting message indicating this.")
             self._transmit_files(*self._cfg.PARAGRAPHS.TESTING_CODE_TIMED_OUT)
 
     def _transmit_files(self, *filepaths):
@@ -387,10 +391,8 @@ def parse_cfg(cfg_path):
 
     cfg.LAST_CHANNEL = cfg_dict['LAST_CHANNEL']
     cfg.TONE_DETECT_REC_LENGTH = cfg_dict.get('TONE_DETECT_REC_LENGTH')  # ms, length of recording while scanning.
-    cfg.MESSAGE_LOOP_SHORT_DELAY = cfg_dict.get('MESSAGE_LOOP_SHORT_DELAY', 5)  # seconds
-    cfg.NUM_SHORT_DELAYS = cfg_dict.get('NUM_SHORT_DELAYS', 2)
-    cfg.MESSAGE_LOOP_LONG_DELAY = cfg_dict.get('MESSAGE_LOOP_LONG_DELAY', 300)  # seconds
     cfg.CANCEL_HELP_TIMEOUT = cfg_dict.get('CANCEL_HELP_TIMEOUT')
+    cfg.TESTING_STAR_DETECT_TIMEOUT = cfg_dict.get('TESTING_STAR_DETECT_TIMEOUT', 10)
     cfg.OPERATOR_ID_TIMEOUT = cfg_dict.get('OPERATOR_ID_TIMEOUT', 7)
     cfg.TRANSMIT_DELAY = cfg_dict.get('TRANSMIT_DELAY',
                                         1.5)  # seconds. Delay after activating PTT and before playing files.
@@ -398,19 +400,38 @@ def parse_cfg(cfg_path):
                  , "LAST_CHANNEL must be an integer greater than or equal to 6.")
     verify_field(cfg.TONE_DETECT_REC_LENGTH, lambda t: isinstance(t, Real) and t >= 50
                  , "TONE_DETECT_REC_LENGTH must be a number of milliseconds greater than or equal to 50.")
-    verify_field(cfg.MESSAGE_LOOP_SHORT_DELAY, lambda d: isinstance(d, Real) and d >= 0
-                 , "MESSAGE_LOOP_SHORT_DELAY must be a non-negative number of seconds.")
-    verify_field(cfg.NUM_SHORT_DELAYS, lambda d: isinstance(d, int) and d >= 0
-                 , "NUM_SHORT_DELAYS must be a non-negative integer.")
-    verify_field(cfg.MESSAGE_LOOP_LONG_DELAY, lambda d: isinstance(d, Real) and d >= 0
-                 , "MESSAGE_LOOP_LONG_DELAY must be a non-negative number of seconds.")
     verify_field(cfg.CANCEL_HELP_TIMEOUT, lambda t: isinstance(t, Real) and t >= 0
                  , "CANCEL_HELP_TIMEOUT must be a non-negative number of seconds.")
+    verify_field(cfg.TESTING_STAR_DETECT_TIMEOUT, lambda t: isinstance(t, Real) and t >= 0
+                 , "TESTING_STAR_DETECT_TIMEOUT must be a non-negative number of seconds.")
     verify_field(cfg.OPERATOR_ID_TIMEOUT, lambda t: isinstance(t, Real) and t >= 0
                  , "OPERATOR_ID_TIMEOUT must be a non-negative number of seconds.")
     if not verify_field(cfg.TRANSMIT_DELAY, lambda d: isinstance(d, Real) and d >= 0
                  , "TRANSMIT_DELAY must be a non-negative number of seconds."):
         cfg.TRANSMIT_DELAY = 1
+
+    cfg.INITIAL_ALERT_SHORT_DELAY_LENGTH = cfg_dict.get('INITIAL_ALERT_SHORT_DELAY_LENGTH', 5)  # seconds
+    cfg.INITIAL_ALERT_NUM_SHORT_DELAYS = cfg_dict.get('INITIAL_ALERT_NUM_SHORT_DELAYS', 2)
+    cfg.INITIAL_ALERT_LONG_DELAY_LENGTH = cfg_dict.get('INITIAL_ALERT_LONG_DELAY_LENGTH', 300)  # seconds
+    cfg.SHORT_DELAY_MESSAGE_LOOP_LENGTH = cfg_dict.get('SHORT_DELAY_MESSAGE_LOOP_LENGTH', 60)
+    cfg.MODERATE_DELAY_MESSAGE_LOOP_LENGTH = cfg_dict.get('MODERATE_DELAY_MESSAGE_LOOP_LENGTH', 120)
+    cfg.LONG_DELAY_MESSAGE_LOOP_LENGTH = cfg_dict.get('LONG_DELAY_MESSAGE_LOOP_LENGTH', 120)
+    cfg.IC_DEFINED_MESSAGE_LOOP_LENGTH = cfg_dict.get('IC_DEFINED_MESSAGE_LOOP_LENGTH', 120)
+
+    verify_field(cfg.INITIAL_ALERT_SHORT_DELAY_LENGTH, lambda d: isinstance(d, Real) and d >= 0
+                 , "INITIAL_ALERT_SHORT_DELAY_LENGTH must be a non-negative number of seconds.")
+    verify_field(cfg.INITIAL_ALERT_NUM_SHORT_DELAYS, lambda d: isinstance(d, int) and d >= 0
+                 , "INITIAL_ALERT_NUM_SHORT_DELAYS must be a non-negative integer.")
+    verify_field(cfg.INITIAL_ALERT_LONG_DELAY_LENGTH, lambda d: isinstance(d, Real) and d >= 0
+                 , "INITIAL_ALERT_LONG_DELAY_LENGTH must be a non-negative number of seconds.")
+    verify_field(cfg.SHORT_DELAY_MESSAGE_LOOP_LENGTH, lambda d: isinstance(d, Real) and d >= 0
+                 , "SHORT_DELAY_MESSAGE_LOOP_LENGTH must be a non-negative number of seconds.")
+    verify_field(cfg.MODERATE_DELAY_MESSAGE_LOOP_LENGTH, lambda d: isinstance(d, Real) and d >= 0
+                 , "MODERATE_DELAY_MESSAGE_LOOP_LENGTH must be a non-negative number of seconds.")
+    verify_field(cfg.LONG_DELAY_MESSAGE_LOOP_LENGTH, lambda d: isinstance(d, Real) and d >= 0
+                 , "LONG_DELAY_MESSAGE_LOOP_LENGTH must be a non-negative number of seconds.")
+    verify_field(cfg.IC_DEFINED_MESSAGE_LOOP_LENGTH, lambda d: isinstance(d, Real) and d >= 0
+                 , "IC_DEFINED_MESSAGE_LOOP_LENGTH must be a non-negative number of seconds.")
 
     cfg.RIGCTLD_ADDRESS = cfg_dict.get('RIGCTLD_ADDRESS', '127.0.0.1')
     cfg.RIGCTLD_PORT = cfg_dict.get('RIGCTLD_PORT', 4532)
