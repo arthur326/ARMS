@@ -26,12 +26,16 @@ class ARMS:
 
     def begin_operation(self):
         self._rigctlr.set_ptt(PTT.RX)
+
+        if self._cfg.INVALID_CONFIGURATION:
+            self._broadcast_errors()
+            return
+
         self._init_audio_io()
         self._load_audio_files()
         self._set_not_in_alert_flag(True)
 
         logging.info("ARMS is beginning operation.")
-
         while True:
             for ch in range(6, self._cfg.LAST_CHANNEL + 1):
                 self._rigctlr.switch_channel(ch)
@@ -55,6 +59,13 @@ class ARMS:
         except Exception:
             logging.exception("Error " + ("creating" if not_in_alert else "removing") + " not_in_alert flag file."
                                                                                        " Continuing operation.")
+
+    def _broadcast_errors(self):
+        logging.critical("ARMS has detected configuration errors. Broadcasting messages on alert channel.")
+        self._init_audio_io(output_only=True)
+        while True:
+            self._transmit_files(self._cfg.ARMS_BOOT_ERROR_PATH)
+            sleep(60)
 
     def _alert_procedure(self, ch: int):
         logging.info(f"Entering alert procedure; channel: {ch}.")
@@ -191,7 +202,7 @@ class ARMS:
     def _test_procedure(self, ch):
         logging.info(f"Entering test procedure on channel {ch}.")
         self._transmit_files(*self._cfg.PARAGRAPHS.ENTER_OPERATOR_CODE)
-        if wait_for_dtmf_seq(5, False, "*#") == "*#":
+        if wait_for_dtmf_seq(10, False, "*#") == "*#":
             op_id = self._detect_op_id()
             if op_id not in {None, False} and self._cfg.OPERATORS[op_id]:
                 logging.info(f"Valid and active ID detected: {op_id}. Transmitting testing message on calling channel.")
@@ -201,9 +212,9 @@ class ARMS:
                 self._transmit_files(self._operator_name_path(op_id), *self._cfg.PARAGRAPHS.TESTING)
             else:
                 logging.info("No valid and active ID detected. Transmitting message indicating this.")
-                self._transmit_files(*self._cfg.PARAGRAPHS.INVALID_OPERATOR_CODE)
+                self._transmit_files(*self._cfg.PARAGRAPHS.TESTING_CODE_INVALID)
         else:
-            self._transmit_files(*self._cfg.PARAGRAPHS.IC_CODE_TIMED_OUT)
+            self._transmit_files(*self._cfg.PARAGRAPHS.TESTING_CODE_TIMED_OUT)
 
     def _transmit_files(self, *filepaths):
         self._wait_for_silence()
@@ -291,15 +302,15 @@ class ARMS:
             if active:
                 load(self._operator_name_path(op_id))
 
-    def _init_audio_io(self):
+    def _init_audio_io(self, output_only=False):
         """
         Audio devices like to be unavailable through sounddevice the first time ARMS tries to use them after a reboot.
         Thus, we try to initialize audio a few times before declaring defeat.
         """
         for i in range(4):
             try:
-                init_io(input_device=self._cfg.INPUT_AUDIO_DEVICE_SUBSTRING
-                        , output_device=self._cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING)
+                init_io(self._cfg.INPUT_AUDIO_DEVICE_SUBSTRING
+                        , self._cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING, output_only)
             except Exception:
                 if i < 3:
                     sleep(3)
@@ -360,9 +371,21 @@ def parse_cfg(cfg_path):
     cfg_dict = toml.load(cfg_path)
     cfg = SimpleNamespace()
 
-    def verify_field(value, predicate, exception_msg):
+    cfg.DISABLE_ERROR_BROADCASTING = cfg_dict.get("DISABLE_ERROR_BROADCASTING", False)
+    cfg.INVALID_CONFIGURATION = False
+
+    def verify_field(value, predicate, exception_msg, raise_exception_on_invalid=False):
         if not predicate(value):
-            raise TypeError(exception_msg)
+            if raise_exception_on_invalid or cfg.DISABLE_ERROR_BROADCASTING:
+                raise TypeError(exception_msg)
+            else:
+                cfg.INVALID_CONFIGURATION = True
+                logging.critical(exception_msg)
+                return False
+        return True
+
+    verify_field(cfg.DISABLE_ERROR_BROADCASTING, lambda b: isinstance(b, bool), "DISABLE_ERROR_BROADCASTING"
+                                                                                " must be 'true' or 'false'.", True)
 
     cfg.LAST_CHANNEL = cfg_dict['LAST_CHANNEL']
     cfg.TONE_DETECT_REC_LENGTH = cfg_dict.get('TONE_DETECT_REC_LENGTH')  # ms, length of recording while scanning.
@@ -373,7 +396,7 @@ def parse_cfg(cfg_path):
     cfg.OPERATOR_ID_TIMEOUT = cfg_dict.get('OPERATOR_ID_TIMEOUT', 7)
     cfg.TRANSMIT_DELAY = cfg_dict.get('TRANSMIT_DELAY',
                                         1.5)  # seconds. Delay after activating PTT and before playing files.
-    verify_field(cfg.LAST_CHANNEL, lambda ch: isinstance(ch, int) and ch >= 6
+    last_channel_valid = verify_field(cfg.LAST_CHANNEL, lambda ch: isinstance(ch, int) and ch >= 6
                  , "LAST_CHANNEL must be an integer greater than or equal to 6.")
     verify_field(cfg.TONE_DETECT_REC_LENGTH, lambda t: isinstance(t, Real) and t >= 50
                  , "TONE_DETECT_REC_LENGTH must be a number of milliseconds greater than or equal to 50.")
@@ -387,8 +410,9 @@ def parse_cfg(cfg_path):
                  , "CANCEL_HELP_TIMEOUT must be a non-negative number of seconds.")
     verify_field(cfg.OPERATOR_ID_TIMEOUT, lambda t: isinstance(t, Real) and t >= 0
                  , "OPERATOR_ID_TIMEOUT must be a non-negative number of seconds.")
-    verify_field(cfg.TRANSMIT_DELAY, lambda d: isinstance(d, Real) and d >= 0
-                 , "TRANSMIT_DELAY must be a non-negative number of seconds.")
+    if not verify_field(cfg.TRANSMIT_DELAY, lambda d: isinstance(d, Real) and d >= 0
+                 , "TRANSMIT_DELAY must be a non-negative number of seconds."):
+        cfg.TRANSMIT_DELAY = 1
 
     cfg.RIGCTLD_ADDRESS = cfg_dict.get('RIGCTLD_ADDRESS', '127.0.0.1')
     cfg.RIGCTLD_PORT = cfg_dict.get('RIGCTLD_PORT', 4532)
@@ -397,10 +421,10 @@ def parse_cfg(cfg_path):
     cfg.RIGCTLD_OPERATION_TIMEOUT = cfg_dict.get('RIGCTLD_OPERATION_TIMEOUT', 7)  # seconds
 
     verify_field(cfg.RIGCTLD_ADDRESS, lambda addr: isinstance(addr, str)
-                 , "RIGCTLD_ADDRESS must be a string specifying an IP address.")
+                 , "RIGCTLD_ADDRESS must be a string specifying an IP address.", True)
     verify_field(cfg.RIGCTLD_PORT, lambda p: isinstance(p, int) and p >= 0 and p < 65536
-                                                , "RIGCTLD_PORT must be a valid port number.")
-    verify_field(cfg.SWITCH_TO_MEM_MODE, lambda b: isinstance(b, bool), 'SWITCH_TO_MEM_MODE must be "true" or "false"')
+                                                , "RIGCTLD_PORT must be a valid port number.", True)
+    verify_field(cfg.SWITCH_TO_MEM_MODE, lambda b: isinstance(b, bool), 'SWITCH_TO_MEM_MODE must be "true" or "false"', True)
     verify_field(cfg.DISABLE_PTT, lambda b: isinstance(b, bool), 'DISABLE_PTT must be "true" or "false"')
     verify_field(cfg.RIGCTLD_OPERATION_TIMEOUT, lambda t: isinstance(t, Real) and t > 0
                  , "RIGCTLD_OPERATION_TIMEOUT must be a positive number of seconds.")
@@ -424,14 +448,16 @@ def parse_cfg(cfg_path):
     cfg.DCD_REQ_CONSEC_ZEROES = cfg_dict.get('DCD_REQ_CONSEC_ZEROES',
                                              6)  # number of consecutive zero samples to conclude silence
 
-    verify_field(cfg.DCD_SAMPLING_PERIOD, lambda t: isinstance(t, Real) and t >= 0
-                 , "DCD_SAMPLING_PERIOD must be a non-negative number of milliseconds.")
-    verify_field(cfg.DCD_REQ_CONSEC_ZEROES, lambda n: isinstance(n, int) and n >= 0
-                 , "DCD_REQ_CONSEC_ZEROES must be a non-negative integer.")
+    if not verify_field(cfg.DCD_SAMPLING_PERIOD, lambda t: isinstance(t, Real) and t >= 0
+                 , "DCD_SAMPLING_PERIOD must be a non-negative number of milliseconds."):
+        cfg.DCD_SAMPLING_PERIOD = 200
+    if not verify_field(cfg.DCD_REQ_CONSEC_ZEROES, lambda n: isinstance(n, int) and n >= 0
+                 , "DCD_REQ_CONSEC_ZEROES must be a non-negative integer."):
+        cfg.DCD_REQ_CONSEC_ZEROES = 5
 
     cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING = cfg_dict.get('OUTPUT_AUDIO_DEVICE_SUBSTRING', None)
     verify_field(cfg.OUTPUT_AUDIO_DEVICE_SUBSTRING, lambda s: s is None or isinstance(s, str)
-                 , "OUTPUT_AUDIO_DEVICE_SUBSTRING must be a string or left unspecified.")
+                 , "OUTPUT_AUDIO_DEVICE_SUBSTRING must be a string or left unspecified.", True)
     cfg.INPUT_AUDIO_DEVICE_SUBSTRING = cfg_dict.get('INPUT_AUDIO_DEVICE_SUBSTRING', None)
     verify_field(cfg.INPUT_AUDIO_DEVICE_SUBSTRING, lambda s: s is None or isinstance(s, str)
                  , "INPUT_AUDIO_DEVICE_SUBSTRING must be a string or left unspecified.")
@@ -451,6 +477,40 @@ def parse_cfg(cfg_path):
         else:
             cfg.DISABLE_PTT = True
 
+    cfg.AUDIO_DIRECTORY = Path("audio/")
+    cfg.REPEATER_NAME_DIRECTORY = cfg.AUDIO_DIRECTORY / "repeater_name/"
+    cfg.OPERATOR_NAME_DIRECTORY = cfg.AUDIO_DIRECTORY / "operator_name/"
+    cfg.ARMS_BOOT_ERROR_PATH = cfg.AUDIO_DIRECTORY / "ARMS_boot_error.wav"
+
+    def verify_path_readable(path: Union[Path, str], directory:Union[Path, None]=None):
+        if not isinstance(path, Path) and not isinstance(path, str):
+            return False
+        if directory is not None:
+            path = directory / path
+        elif not isinstance(path, Path):
+            path = Path(path)
+        try:
+            with path.open("r") as file:
+                if not file.readable():
+                    return False
+        except IOError:
+            return False
+        return True
+
+    verify_field(cfg.ARMS_BOOT_ERROR_PATH, verify_path_readable
+                 , f"The necessary file '{cfg.ARMS_BOOT_ERROR_PATH}' is either missing or could not be read.", True)
+
+    def verify_repeater_names():
+        for ch in range(6, cfg.LAST_CHANNEL):
+            if not verify_path_readable(cfg.REPEATER_NAME_DIRECTORY / "{:02d}.wav".format(ch)):
+                return False
+        return True
+
+    if last_channel_valid:
+        verify_field(None, lambda *args, **kwargs: verify_repeater_names(), f"One or more repeater name audio files either was not found in"
+                                                    f" the directory {cfg.REPEATER_NAME_DIRECTORY}"
+                                                    f" or could not be read.")
+
     cfg.OPERATORS = cfg_dict.get("OPERATORS", {})
 
     def operators_predicate(operators_dict: Dict):
@@ -459,7 +519,7 @@ def parse_cfg(cfg_path):
                 return False
         return True
 
-    verify_field(cfg.OPERATORS, operators_predicate
+    valid_operators = verify_field(cfg.OPERATORS, operators_predicate
                  , """
 Active operator IDs should be specified as follows:
                  
@@ -479,42 +539,26 @@ Operator ID mnl is valid if and only if m is even, n is odd, and l = (n + 5) mod
 
                  """)
     cfg.OPERATORS = {int(id_str): active for id_str, active in cfg.OPERATORS.items()}
-    # TODO: Verify presence and readability of repeater names and operator names.
 
-    cfg.AUDIO_DIRECTORY = Path("audio/")
-    cfg.REPEATER_NAME_DIRECTORY = cfg.AUDIO_DIRECTORY / "repeater_name/"
-    cfg.OPERATOR_NAME_DIRECTORY = cfg.AUDIO_DIRECTORY / "operator_name/"
-    cfg.ARMS_BOOT_ERROR_PATH = cfg.AUDIO_DIRECTORY / "ARMS_boot_error.wav"
+    def verify_operator_audio_files():
+        for op_id, active in cfg.OPERATORS.items():
+            if active and not verify_path_readable(cfg.OPERATOR_NAME_DIRECTORY / "{:03d}.wav".format(op_id)):
+                return False
+        return True
+
+    if valid_operators:
+        verify_field(None, lambda *args, **kwargs: verify_operator_audio_files(), f"At least one of the operator name audio files"
+                                                        f" either could not be found in the directory"
+                                                        f" {cfg.OPERATOR_NAME_DIRECTORY} or could not be read.")
 
     cfg.PARAGRAPHS = cfg_dict.get("PARAGRAPHS", {})
     cfg.REQUIRED_PARAGRAPHS = {"ADVISE_CALLER_HEARD", "INITIAL_ALERT", "IC_DEFINED", "SHORT_DELAY", "MODERATE_DELAY"
                                , "LONG_DELAY", "ALERT_CANCELLED", "ARMS_RETURNING_NORMAL_OP", "IC_CODE_TIMED_OUT"
-                               , "IC_CODE_INVALID", "TESTING", "ENTER_OPERATOR_CODE", "INVALID_OPERATOR_CODE"}
-
-    def paragraphs_predicate(paragraphs: Dict):
-        if paragraphs.keys() != cfg.REQUIRED_PARAGRAPHS:
-            logging.critical("There is a mismatch between paragraph names which were required and which were provided.")
-            return False
-        for path_seq in paragraphs.values():
-            if len(path_seq) == 0:
-                logging.critical("At least one of the paragraphs is empty.")
-                return False
-            for path in path_seq:
-                if not isinstance(path, str):
-                    return False
-                try:
-                    with (cfg.AUDIO_DIRECTORY / path).open("r") as file:
-                        if not file.readable():
-                            logging.critical(f"File {path} is not readable.")
-                            return False
-                except IOError:
-                    logging.critical(f"File {path} is not readable.")
-                    return False
-        return True
-    verify_field(cfg.PARAGRAPHS, paragraphs_predicate
-                 , """
+                               , "IC_CODE_INVALID", "TESTING", "ENTER_OPERATOR_CODE", "TESTING_CODE_INVALID"
+                               , "TESTING_CODE_TIMED_OUT"}
+    common_paragraphs_error_str = """
 An issue was detected with the paragraphs in the configuration. Please check for a specific message in a separate
-logging entry near this one.
+logging entry earlier than this one.
 
 Paragraphs should be specified as non-empty lists of strings representing the sequence of audio
 files to be played as part of that paragraph. Each string should be a file path relative to the
@@ -527,17 +571,24 @@ IC_DEFINED = ["all_stations_standby.wav"]
 
 The following paragraphs, and only the following paragraphs, must be defined:
 
-""" + reduce(lambda s1, s2: s1 + s2 + "\n", cfg.REQUIRED_PARAGRAPHS, ""))
-    cfg.PARAGRAPHS = SimpleNamespace(**{par_name: [cfg.AUDIO_DIRECTORY/path for path in paths] for par_name, paths in cfg.PARAGRAPHS.items()})
+""" + reduce(lambda s1, s2: s1 + s2 + "\n", cfg.REQUIRED_PARAGRAPHS, "")
 
-    """
-    cfg.SYS_CALLING_HELP_PATH = cfg.AUDIO_DIRECTORY / "system_is_calling_help.wav"
-    cfg.LPZ_DETECTED_PATH = cfg.AUDIO_DIRECTORY / "lpz_detected.wav"
-    cfg.ALERT_CANCELLED_PATH = cfg.AUDIO_DIRECTORY / "alert_cancelled.wav"
-    cfg.BEEP_PATH = cfg.AUDIO_DIRECTORY / "beep.wav"
-    cfg.ASCENDING_BEEP_PATH = cfg.AUDIO_DIRECTORY / "ascending_beep.wav"
-    cfg.CALL_SIGN_PATH = cfg.AUDIO_DIRECTORY / "call_sign.wav"
-    """
+    def paragraphs_predicate(paragraphs: Dict):
+        if paragraphs.keys() != cfg.REQUIRED_PARAGRAPHS:
+            logging.critical("There is a mismatch between paragraph names which were required and which were provided.")
+            return False
+        for path_seq in paragraphs.values():
+            if len(path_seq) == 0:
+                logging.critical("At least one of the paragraphs is empty.")
+                return False
+            for path in path_seq:
+                if not verify_path_readable(path, cfg.AUDIO_DIRECTORY):
+                    logging.critical(f"The path '{path}' is either invalid or corresponds to a file which cannot be read.")
+                    return False
+        return True
+    verify_field(cfg.PARAGRAPHS, paragraphs_predicate
+                 , common_paragraphs_error_str)
+    cfg.PARAGRAPHS = SimpleNamespace(**{par_name: [cfg.AUDIO_DIRECTORY/path for path in paths] for par_name, paths in cfg.PARAGRAPHS.items()})
 
     cfg.NOT_IN_ALERT_FLAG_PATH = Path("not_in_alert")
 

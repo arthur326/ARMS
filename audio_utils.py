@@ -25,25 +25,27 @@ _DETECTED_DTMF_PATTERN = re.compile(r"DTMF\s*:\s*(?P<value>[0-9A-D#*])\s*")
 _SAFETY_WAIT_BUFFER = 0.005
 
 
-def init_io(input_device=None, output_device=None):
+def init_io(input_device=None, output_device=None, output_only=False):
     """
     Sets the input and output audio devices; intended to be called once and before other operations. Default devices
     will be used if unspecified.
     """
     sounddevice.default.device = input_device, output_device
-    sounddevice.check_input_settings(device=input_device)
     sounddevice.check_output_settings(device=output_device)
     if _out_stream_data.stream is not None:
         _out_stream_data.stream.close()
     _out_stream_data.stream = sounddevice.OutputStream(device=output_device, channels=2, callback=_out_stream_callback
                                                        , finished_callback=_out_stream_finished_callback)
     _out_stream_data.stream.start()
-    if _in_stream_data.stream is not None:
-        _in_stream_data.stream.close()
-    # multimon-ng native format is s16le, 22050 Hz, mono.
-    _in_stream_data.stream = sounddevice.InputStream(device=input_device, dtype="<i2", samplerate=22050, channels=1,
-                                                     callback=_in_stream_callback)
-    _in_stream_data.stream.start()
+
+    if not output_only:
+        sounddevice.check_input_settings(device=input_device)
+        if _in_stream_data.stream is not None:
+            _in_stream_data.stream.close()
+        # multimon-ng native format is s16le, 22050 Hz, mono.
+        _in_stream_data.stream = sounddevice.InputStream(device=input_device, dtype="<i2", samplerate=22050, channels=1,
+                                                         callback=_in_stream_callback)
+        _in_stream_data.stream.start()
 
 
 def load(filepath):

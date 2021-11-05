@@ -7,6 +7,7 @@ MESSAGE_LOOP_LONG_DELAY = 300  # seconds
 CANCEL_HELP_TIMEOUT = 8  # seconds. Currently not used since cancellation by caller was removed. May be deleted soon.
 OPERATOR_ID_TIMEOUT = 7 # seconds. Time to enter the 3-digit operator code after entering "*#".
 TRANSMIT_DELAY = 1.5  # seconds. Delay after activating PTT and before playing files.
+DISABLE_ERROR_BROADCASTING = false  # ARMS will normally announce a configuration errors on the alert channel if there is sufficient valid configuration to do so.
 
 #hamlib
 RIGCTLD_ADDRESS = "127.0.0.1"
@@ -46,11 +47,12 @@ MODERATE_DELAY = ["10_minute_delay.wav", "remain_on_frequency.wav"]
 LONG_DELAY = ["20_minute_delay.wav", "remain_on_frequency.wav"]
 ALERT_CANCELLED = ["alert_handled.wav"]
 ARMS_RETURNING_NORMAL_OP = ["ARMS_returning_normal_op.wav", "call_sign.wav"]
-IC_CODE_INVALID = ["invalid_operator.wav"]
-IC_CODE_TIMED_OUT = ["timed_out.wav"]
-TESTING = ["testing.wav", "call_sign.wav"]
-INVALID_OPERATOR_CODE = ["invalid_operator.wav"]
 ENTER_OPERATOR_CODE = ["enter_operator_code.wav"]
+IC_CODE_INVALID = ["ic_code_invalid.wav"]
+IC_CODE_TIMED_OUT = ["ic_code_timed_out.wav"]
+TESTING = ["testing.wav", "call_sign.wav"]
+TESTING_CODE_INVALID = ["testing_code_invalid.wav"]
+TESTING_CODE_TIMED_OUT = ["testing_code_timed_out.wav"]
 
 [OPERATORS]
 016 = true  # K7AA
