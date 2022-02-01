@@ -59,7 +59,9 @@ IC_CODE_INVALID = ["ic_code_invalid.wav"]
 IC_CODE_TIMED_OUT = ["ic_code_timed_out.wav"]
 TESTING = ["testing.wav", "call_sign.wav"]
 TESTING_CODE_INVALID = ["testing_code_invalid.wav"]
-TESTING_CODE_TIMED_OUT = ["testing_code_timed_out.wav"]
+TESTING_CODE_TIMED_OUT = ["testing_code_timed_out.wav", "call_sign.wav"]
+ARMS_GOING_TO_CALLING_CHANNEL = ["arms_going_to_calling_channel.wav"]
+ARMS_IS_BACK_ON_ALERT_CHANNEL = ["arms_is_back_on_alert_channel.wav"]
 
 [OPERATORS]
 016 = true  # K7AA

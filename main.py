@@ -105,11 +105,15 @@ class ARMS:
                 paragraph = self._cfg.PARAGRAPHS.LONG_DELAY
             else:
                 raise ValueError
+            logging.info("Playing ARMS_GOING_TO_CALLING_CHANNEL on alert channel.")
+            self._transmit_files(*self._cfg.PARAGRAPHS.ARMS_GOING_TO_CALLING_CHANNEL)
             logging.info(f"Announcing {delay_length_str} delay on calling channel.")
             self._rigctlr.switch_channel(ch)
             self._transmit_files(*paragraph)
-            logging.info(f"Announcing {delay_length_str} delay on alert channel.")
+            logging.info("Playing ARMS_IS_BACK_ON_ALERT_CHANNEL on alert channel.")
             self._rigctlr.switch_channel(1)
+            self._transmit_files(*self._cfg.PARAGRAPHS.ARMS_IS_BACK_ON_ALERT_CHANNEL)
+            logging.info(f"Announcing {delay_length_str} delay on alert channel.")
             self._transmit_files(*paragraph)
 
         def ic_defined_transmit_procedure(op_id: int):
@@ -561,7 +565,7 @@ The only valid operator numbers are:
 216, 238, 250, 272, 294,
 416, 438, 450, 472, 494,
 616, 638, 650, 672, 694,
-816, 838, 850, 872, 894
+816, 838, 850, 872, 894.
 
 Operator ID mnl is valid if and only if m is even, n is odd, and l = (n + 5) mod 10.
 
@@ -583,7 +587,8 @@ Operator ID mnl is valid if and only if m is even, n is odd, and l = (n + 5) mod
     cfg.REQUIRED_PARAGRAPHS = {"ADVISE_CALLER_HEARD", "INITIAL_ALERT", "IC_DEFINED", "SHORT_DELAY", "MODERATE_DELAY"
                                , "LONG_DELAY", "ALERT_CANCELLED", "ARMS_RETURNING_NORMAL_OP", "IC_CODE_TIMED_OUT"
                                , "IC_CODE_INVALID", "TESTING", "ENTER_OPERATOR_CODE", "TESTING_CODE_INVALID"
-                               , "TESTING_CODE_TIMED_OUT"}
+                               , "TESTING_CODE_TIMED_OUT", "ARMS_GOING_TO_CALLING_CHANNEL"
+                               , "ARMS_IS_BACK_ON_ALERT_CHANNEL"}
     common_paragraphs_error_str = """
 An issue was detected with the paragraphs in the configuration. Please check for a specific message in a separate
 logging entry earlier than this one.
