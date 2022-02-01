@@ -145,8 +145,14 @@ class ARMS:
         # Former location of first alert message with ascending beep.
         # next(states_iter)
 
+        state = next(states_iter)
+        remain_at_same_state = True
+        self._rigctlr.switch_channel(1)
         while True:
-            state = next(states_iter)
+            if remain_at_same_state:
+                remain_at_same_state = False
+            else:
+                state = next(states_iter)
             if state == State.PLAYING_INFO:
                 cur_looping_data.info_transmit_procedure()
             elif state == State.WAITING:
@@ -179,24 +185,26 @@ class ARMS:
                     continue
                 elif seq == "*":
                     logging.info("* detected. Initiating operator identification.")
-                    id = self._detect_op_id()
-                    if id is None:
+                    op_id = self._detect_op_id()
+                    if op_id is None:
                         logging.info("Timeout reached while listening for operator ID.")
                         self._transmit_files(*self._cfg.PARAGRAPHS.IC_CODE_TIMED_OUT)
-                    elif id is False:
+                    elif op_id is False:
                         logging.info("Invalid operator ID detected.")
                         self._transmit_files(*self._cfg.PARAGRAPHS.IC_CODE_INVALID)
                     else:
-                        logging.info(f"Detected ID: {id}.")
-                        if self._cfg.OPERATORS[id]:
+                        logging.info("Detected ID: {:03d}.".format(op_id))
+                        if self._cfg.OPERATORS[op_id]:
                             logging.info("The operator ID detected is active. Announcing this operator as in-command.")
-                            set_looping_data(LoopingBehavior.IC_DEFINED, True, id)
+                            set_looping_data(LoopingBehavior.IC_DEFINED, True, op_id)
                         else:
                             logging.info("The operator ID detected is NOT active.")
                             self._transmit_files(*self._cfg.PARAGRAPHS.IC_CODE_INVALID)
                         continue
                         # Otherwise log and transmit that ID received is not active (or do something else.)
                     logging.info("An operator was not successfully set as IC. ARMS will remain in its existing state.")
+                    remain_at_same_state = True
+                    continue
                 cur_looping_data.delay_index = (cur_looping_data.delay_index + 1) % len(cur_looping_data.delays)
 
     def _test_procedure(self, ch):
@@ -205,8 +213,9 @@ class ARMS:
         if wait_for_dtmf_tone(self._cfg.TESTING_STAR_DETECT_TIMEOUT, Tone.STAR) == Tone.STAR:
             op_id = self._detect_op_id()
             if op_id not in {None, False} and self._cfg.OPERATORS[op_id]:
-                logging.info(f"Valid and active ID detected: {op_id}. Transmitting testing message on calling channel.")
+                logging.info("Valid and active ID detected: {:03d}. Transmitting testing message on calling channel.".format(op_id))
                 self._transmit_files(self._operator_name_path(op_id), *self._cfg.PARAGRAPHS.TESTING)
+                sleep(2)
                 logging.info("Transmitting testing message on alert channel.")
                 self._rigctlr.switch_channel(1)
                 self._transmit_files(self._operator_name_path(op_id), *self._cfg.PARAGRAPHS.TESTING)
