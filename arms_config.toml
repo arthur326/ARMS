@@ -2,6 +2,7 @@
 LAST_CHANNEL = 14
 TONE_DETECT_REC_LENGTH = 50  # ms, at least 50. Length of recording to be analyzed during scanning before proceeding to next channel. Actual time spent on channel will be longer.
 CANCEL_HELP_TIMEOUT = 8  # seconds. Currently not used since cancellation by caller was removed. May be deleted soon.
+CONFIRM_CANCEL_ALERT_TIMEOUT = 8  # seconds. Time for the operator to confirm alert cancellation after being asked.
 TESTING_STAR_DETECT_TIMEOUT = 15 # seconds. Time to enter "*" after being prompted for the operator code during the testing procedure.
 OPERATOR_ID_TIMEOUT = 10 # seconds. Time to enter pound followed by the 3-digit operator code after entering "*". Applies during testing and alert procedures.
 TRANSMIT_DELAY = 1.5  # seconds. Delay after activating PTT and before playing files.
@@ -62,6 +63,7 @@ TESTING_CODE_INVALID = ["testing_code_invalid.wav"]
 TESTING_CODE_TIMED_OUT = ["testing_code_timed_out.wav", "call_sign.wav"]
 ARMS_GOING_TO_CALLING_CHANNEL = ["arms_going_to_calling_channel.wav"]
 ARMS_IS_BACK_ON_ALERT_CHANNEL = ["arms_is_back_on_alert_channel.wav"]
+ALERT_CANCEL_CONFIRM = ["alert_cancel_confirm.wav"]
 
 [OPERATORS]
 016 = true  # K7AA

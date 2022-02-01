@@ -164,13 +164,21 @@ class ARMS:
                 seq = wait_for_dtmf_seq(cur_looping_data.delays[cur_looping_data.delay_index], False
                                          , "111", "222", "333", "444", "000", "*")
                 if seq == "000":
-                    logging.info("000 detected. Cancelling alert procedure.")
-                    logging.info("Acknowledging cancellation on alert channel.")
-                    self._transmit_files(*self._cfg.PARAGRAPHS.ALERT_CANCELLED, self._repeater_name_path(ch), *self._cfg.PARAGRAPHS.ARMS_RETURNING_NORMAL_OP)
-                    logging.info("Acknowledging cancellation in calling channel.")
-                    self._rigctlr.switch_channel(ch)
-                    self._transmit_files(*self._cfg.PARAGRAPHS.ALERT_CANCELLED, self._repeater_name_path(ch), *self._cfg.PARAGRAPHS.ARMS_RETURNING_NORMAL_OP)
-                    return
+                    logging.info("000 detected. Asking for confirmation before cancelling alert.")
+                    self._transmit_files(*self._cfg.PARAGRAPHS.ALERT_CANCEL_CONFIRM)
+                    if wait_for_dtmf_seq(self._cfg.CONFIRM_CANCEL_ALERT_TIMEOUT, False, "000") == "000":
+                        logging.info("Confirmation via 000 detected. Cancelling alert procedure.")
+                        logging.info("Acknowledging cancellation on alert channel.")
+                        self._transmit_files(*self._cfg.PARAGRAPHS.ALERT_CANCELLED, self._repeater_name_path(ch), *self._cfg.PARAGRAPHS.ARMS_RETURNING_NORMAL_OP)
+                        logging.info("Acknowledging cancellation in calling channel.")
+                        self._rigctlr.switch_channel(ch)
+                        self._transmit_files(*self._cfg.PARAGRAPHS.ALERT_CANCELLED, self._repeater_name_path(ch), *self._cfg.PARAGRAPHS.ARMS_RETURNING_NORMAL_OP)
+                        return
+                    else:
+                        logging.info("Timeout reached while listening for confirmation to cancel alert. ARMS will"
+                                     " remain in its current state.")
+                        remain_at_same_state = True
+                        continue
                 elif seq == "111":
                     logging.info("111 detected. Switching to initial alert announcements on channel 1.")
                     set_looping_data(LoopingBehavior.INITIAL_ALERT)
@@ -404,7 +412,8 @@ def parse_cfg(cfg_path):
 
     cfg.LAST_CHANNEL = cfg_dict['LAST_CHANNEL']
     cfg.TONE_DETECT_REC_LENGTH = cfg_dict.get('TONE_DETECT_REC_LENGTH')  # ms, length of recording while scanning.
-    cfg.CANCEL_HELP_TIMEOUT = cfg_dict.get('CANCEL_HELP_TIMEOUT')
+    #cfg.CANCEL_HELP_TIMEOUT = cfg_dict.get('CANCEL_HELP_TIMEOUT')
+    cfg.CONFIRM_CANCEL_ALERT_TIMEOUT = cfg_dict.get('CONFIRM_CANCEL_ALERT_TIMEOUT', 8)
     cfg.TESTING_STAR_DETECT_TIMEOUT = cfg_dict.get('TESTING_STAR_DETECT_TIMEOUT', 10)
     cfg.OPERATOR_ID_TIMEOUT = cfg_dict.get('OPERATOR_ID_TIMEOUT', 7)
     cfg.TRANSMIT_DELAY = cfg_dict.get('TRANSMIT_DELAY',
@@ -413,8 +422,10 @@ def parse_cfg(cfg_path):
                  , "LAST_CHANNEL must be an integer greater than or equal to 6.")
     verify_field(cfg.TONE_DETECT_REC_LENGTH, lambda t: isinstance(t, Real) and t >= 50
                  , "TONE_DETECT_REC_LENGTH must be a number of milliseconds greater than or equal to 50.")
-    verify_field(cfg.CANCEL_HELP_TIMEOUT, lambda t: isinstance(t, Real) and t >= 0
-                 , "CANCEL_HELP_TIMEOUT must be a non-negative number of seconds.")
+    #verify_field(cfg.CANCEL_HELP_TIMEOUT, lambda t: isinstance(t, Real) and t >= 0
+                 #, "CANCEL_HELP_TIMEOUT must be a non-negative number of seconds.")
+    verify_field(cfg.CONFIRM_CANCEL_ALERT_TIMEOUT, lambda t: isinstance(t, Real) and t > 0
+                 , "CONFIRM_CANCEL_ALERT_TIMEOUT must be a positive number of seconds.")
     verify_field(cfg.TESTING_STAR_DETECT_TIMEOUT, lambda t: isinstance(t, Real) and t >= 0
                  , "TESTING_STAR_DETECT_TIMEOUT must be a non-negative number of seconds.")
     verify_field(cfg.OPERATOR_ID_TIMEOUT, lambda t: isinstance(t, Real) and t >= 0
@@ -588,7 +599,7 @@ Operator ID mnl is valid if and only if m is even, n is odd, and l = (n + 5) mod
                                , "LONG_DELAY", "ALERT_CANCELLED", "ARMS_RETURNING_NORMAL_OP", "IC_CODE_TIMED_OUT"
                                , "IC_CODE_INVALID", "TESTING", "ENTER_OPERATOR_CODE", "TESTING_CODE_INVALID"
                                , "TESTING_CODE_TIMED_OUT", "ARMS_GOING_TO_CALLING_CHANNEL"
-                               , "ARMS_IS_BACK_ON_ALERT_CHANNEL"}
+                               , "ARMS_IS_BACK_ON_ALERT_CHANNEL", "ALERT_CANCEL_CONFIRM"}
     common_paragraphs_error_str = """
 An issue was detected with the paragraphs in the configuration. Please check for a specific message in a separate
 logging entry earlier than this one.
