@@ -1,12 +1,11 @@
 #Main
 LAST_CHANNEL = 14
 TONE_DETECT_REC_LENGTH = 50  # ms, at least 50. Length of recording to be analyzed during scanning before proceeding to next channel. Actual time spent on channel will be longer.
-CANCEL_HELP_TIMEOUT = 8  # seconds. Currently not used since cancellation by caller was removed. May be deleted soon.
 CONFIRM_CANCEL_ALERT_TIMEOUT = 8  # seconds. Time for the operator to confirm alert cancellation after being asked.
 TESTING_STAR_DETECT_TIMEOUT = 15 # seconds. Time to enter "*" after being prompted for the operator code during the testing procedure.
 OPERATOR_ID_TIMEOUT = 10 # seconds. Time to enter pound followed by the 3-digit operator code after entering "*". Applies during testing and alert procedures.
 TRANSMIT_DELAY = 1.5  # seconds. Delay after activating PTT and before playing files.
-DISABLE_ERROR_BROADCASTING = false  # ARMS will normally announce a configuration errors on the alert channel if there is sufficient valid configuration to do so.
+DISABLE_ERROR_BROADCASTING = false  # ARMS will normally announce configuration errors on the alert channel if there is sufficient valid configuration to do so.
 
 #Loop lengths
 INITIAL_ALERT_SHORT_DELAY_LENGTH = 7  # seconds
@@ -24,7 +23,7 @@ SWITCH_TO_MEM_MODE = true
 DISABLE_PTT = false
 RIGCTLD_OPERATION_TIMEOUT = 7  # seconds
 
-#Long tone detection. (Long tone zero invokes the alert procedure; long tone hash invoked the testing procedure.)
+#Long tone detection. (Long tone zero invokes the alert procedure; long tone hash invokes the testing procedure.)
 LONG_TONE_SAMPLING_PERIOD = 100  # ms, at least 100.
 LONG_TONE_TOTAL_SAMPLES = 50  # number of samples
 LONG_TONE_REQUIRED_POSITIVE_SAMPLES = 20  # number of positive samples to conclude LPZ
@@ -36,11 +35,11 @@ DCD_REQ_CONSEC_ZEROES = 6 # number of consecutive DCD = 0 samples to conclude si
 
 #Audio
 #Comment out either line to use default device (not recommended)
-OUTPUT_AUDIO_DEVICE_SUBSTRING = "USB"
-INPUT_AUDIO_DEVICE_SUBSTRING = "USB"
+OUTPUT_AUDIO_DEVICE_SUBSTRING = "pulse"
+INPUT_AUDIO_DEVICE_SUBSTRING = "pulse"
 
 #Debugging
-DEBUG_MODE = true
+DEBUG_MODE = false
 DEBUG_OUTPUT_AUDIO_DEVICE_SUBSTRING = "pulse"
 DEBUG_INPUT_ADUIO_DEVICE_SUBSTRING = "pulse"
 USING_HAMLIB_DUMMY = true
@@ -57,19 +56,19 @@ ALERT_CANCELLED = ["alert_handled.wav"]
 ARMS_RETURNING_NORMAL_OP = ["ARMS_returning_normal_op.wav", "call_sign.wav"]
 ENTER_OPERATOR_CODE = ["enter_operator_code.wav"]
 IC_CODE_INVALID = ["ic_code_invalid.wav"]
-IC_CODE_TIMED_OUT = ["ic_code_timed_out.wav"]
+IC_CODE_TIMED_OUT = ["ic_code_timed_out.wav", "call_sign.wav"]
 TESTING = ["testing.wav", "call_sign.wav"]
-TESTING_CODE_INVALID = ["testing_code_invalid.wav"]
+TESTING_CODE_INVALID = ["testing_code_invalid.wav", "call_sign.wav"]
 TESTING_CODE_TIMED_OUT = ["testing_code_timed_out.wav", "call_sign.wav"]
 ARMS_GOING_TO_CALLING_CHANNEL = ["arms_going_to_calling_channel.wav"]
 ARMS_IS_BACK_ON_ALERT_CHANNEL = ["arms_is_back_on_alert_channel.wav"]
 ALERT_CANCEL_CONFIRM = ["alert_cancel_confirm.wav"]
 
 [OPERATORS]
-016 = true  # K7AA
-038 = true  # AF7YX
-050 = true  # W7RJA
-072 = true  # KJ7PUX
+016 = true  # John Smith ABC123
+038 = false
+050 = false
+072 = false
 094 = false
 
 216 = false
