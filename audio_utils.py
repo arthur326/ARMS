@@ -103,13 +103,6 @@ def _get_audio_data(filepath):
     return _read_audio_data(filepath)
 
 
-def abort_playback():
-    # Starvation could occur if lock is not FIFO here though would still be unlikely.
-    with _out_stream_data.cond:
-        _out_stream_data.playing_data = False
-        _out_stream_data.cond.notify_all()
-
-
 class Tone(Enum):
     """
     DTMF tones with values according to multimon-ng naming.
