@@ -342,6 +342,12 @@ class ARMS:
         return pos_sample_count >= self._cfg.LONG_TONE_REQUIRED_POSITIVE_SAMPLES and pos_sample_count <= self._cfg.LONG_TONE_MAX_POSITIVE_SAMPLES
 
     def _detect_op_id(self) -> Union[int, bool, None]:
+        """
+        Listen for an operator ID preceded by a hash.
+        :return: an operator ID, as an integer, if a valid but not necessarily active operator ID was detected. If
+        an invalid operator ID was detected, False if returned. If enough tones were not received to make either
+        conclusion before the timeout was reached, None is returned.
+        """
         op_id_regex = re.compile(r"#\d{1,3}")
 
         def validity(s: str) -> Union[int, bool, None]:
