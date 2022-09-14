@@ -354,7 +354,7 @@ class ARMS:
                 return False
             elif len(substr) == 3:
                 op_id = int(substr)
-                return op_id if valid_id(op_id) else False
+                return op_id if _valid_id(op_id) else False
 
         match = wait_for_dtmf_seq_predicate(max_rec_length=self._cfg.OPERATOR_ID_TIMEOUT, max_seq_length=4
                                            , ignore_repeat_tones=True
@@ -362,7 +362,7 @@ class ARMS:
         return validity(match) if match is not None else None
 
 
-def valid_id(id: int):
+def _valid_id(id: int):
     if id < 16 or id > 894:
         return False
     hundreds_digit = (id // 100) % 10
@@ -543,7 +543,7 @@ def parse_cfg(cfg_path):
 
     def operators_predicate(operators_dict: Dict):
         for id_str, active in operators_dict.items():
-            if not id_str.isdigit() or len(id_str) != 3 or not valid_id(int(id_str)) or not isinstance(active, bool):
+            if not id_str.isdigit() or len(id_str) != 3 or not _valid_id(int(id_str)) or not isinstance(active, bool):
                 return False
         return True
 
