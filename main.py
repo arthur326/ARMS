@@ -70,18 +70,7 @@ class ARMS:
     def _alert_procedure(self, ch: int):
         logging.info(f"Entering alert procedure; channel: {ch}.")
         self._transmit_files(*self._cfg.PARAGRAPHS.ADVISE_CALLER_HEARD)
-        """
-        Formerly, the caller could cancel the alert.
-        logging.info("Listening for cancellation via DTMF 3.")
-        if self._wait_for_silence_and_tone(self._cfg.CANCEL_HELP_TIMEOUT, Tone.THREE) == Tone.THREE:
-            logging.info("Tone 3 detected. Cancelling alert procedure.")
-            self._transmit_files(self._cfg.ALERT_CANCELLED_PATH, self._repeater_name_path(ch), call_sign=True)
-            return
-        """
 
-        """
-        Specification of looping behavior potentially can be changed to abstract base classes.
-        """
         class LoopingBehavior(Enum):
             INITIAL_ALERT = auto()
             HANDLING_DELAY_SHORT = auto()
@@ -145,9 +134,6 @@ class ARMS:
             cur_looping_data.info_transmit_procedure = lambda: info_transmit_procedure_dict[looping_behavior](*transmit_args)
             if reset_states_iter:
                 cur_looping_data.states_iter = cycle(State)
-
-        # Former location of first alert message with ascending beep.
-        # next(states_iter)
 
         state = next(states_iter)
         remain_at_same_state = True
@@ -213,7 +199,6 @@ class ARMS:
                             logging.info("The operator ID detected is NOT active.")
                             self._transmit_files(*self._cfg.PARAGRAPHS.IC_CODE_INVALID)
                         continue
-                        # Otherwise log and transmit that ID received is not active (or do something else.)
                     logging.info("An operator was not successfully set as IC. ARMS will remain in its existing state.")
                     remain_at_same_state = True
                     continue
