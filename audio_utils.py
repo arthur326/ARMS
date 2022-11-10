@@ -178,9 +178,9 @@ def _in_stream_callback(indata: numpy.ndarray, frames: int,
 
 def wait_for_dtmf_seq_predicate(max_rec_length=None, predicate=lambda s: True, max_seq_length=5, ignore_repeat_tones=False) -> Union[str, None]:
     """
-    Await a sequence of DTMF tones satisfying the provided predicate. If multiple matched become immediately available,
-    the longest will be returned. An E will be present in the string before the first tone received if fewer than
-    max_seq_length have been received.
+    Await a sequence of DTMF tones satisfying the provided predicate. If multiple matches become immediately available,
+    the longest will be returned. The predicate should test for valid sequences of DTMF tones; the behavior is undefined
+    if a string containing other characters can satisfy the predicate.
     :param int max_seq_length: the number of most recent tones retained and examined for sequences matching the predicate.
     Matching sequences may be any non-empty substring of the retained sequence.
     :param Real max_rec_length: maximum amount of audio data to be analyzed, in seconds. None specifies unlimited.
