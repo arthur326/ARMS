@@ -1,0 +1,6 @@
+lovely-logger==1.0.5
+numpy==1.21.*
+samplerate==0.1.0
+sounddevice==0.4.1
+SoundFile==0.10.3.post1
+toml==0.10.2
