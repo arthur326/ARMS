@@ -26,8 +26,8 @@ RIGCTLD_OPERATION_TIMEOUT = 7  # seconds
 #Long tone detection. (Long tone zero invokes the alert procedure; long tone hash invokes the testing procedure.)
 LONG_TONE_SAMPLING_PERIOD = 100  # ms, at least 100.
 LONG_TONE_TOTAL_SAMPLES = 50  # number of samples
-LONG_TONE_REQUIRED_POSITIVE_SAMPLES = 20  # number of positive samples to conclude LPZ
-LONG_TONE_MAX_POSITIVE_SAMPLES = 250  # the number of samples that must be exceeded to conclude a false positive. Set higher than LPZ_TOTAL_SAMPLES to disable false positives.
+LONG_TONE_REQUIRED_POSITIVE_SAMPLES = 20  # number of positive samples to conclude long tone.
+LONG_TONE_MAX_POSITIVE_SAMPLES = 250  # the number of samples that must be exceeded to conclude a false positive. Set higher than LONG_TONE_TOTAL_SAMPLES to disable false positives.
 
 #Silence detection (before transmitting and before starting CANCEL_HELP_TIMEOUT)
 DCD_SAMPLING_PERIOD = 200  # ms
