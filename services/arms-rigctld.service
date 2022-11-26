@@ -1,0 +1,12 @@
+[Unit]
+Description=rigctld instance bound to the arms radio.
+After=network.target
+
+[Service]
+Type=simple
+User=arms
+ExecStart=/usr/local/bin/arms-rigctld.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

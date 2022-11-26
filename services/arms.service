@@ -1,0 +1,16 @@
+[Unit]
+Description=ARMS service
+After=network.target arms-rigctld.service sound.target
+StartLimitBurst=60
+StartLimitIntervalSec=2000
+StartLimitAction=reboot
+
+[Service]
+Type=simple
+User=arms
+ExecStart=/usr/local/bin/arms.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
