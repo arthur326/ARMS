@@ -8,12 +8,12 @@ The intent behind this is to let operators be available to respond to emergencie
 other transmissions, especially at night while sleeping. The alert channel should be tone-guarded using CTCSS or DCS so that
 only transmissions from ARMS will come through.
 
-For more details, please see documentation folder.
+For more details, please see the additional documentation folder.
 
 The system was designed by Steve Fletcher and developed by Arthur Drobot.
 
 ## Installation
-See INSTALLATION.md
+See INSTALLATION.md.
 
 ## Acknowledgements
 Arthur wishes to thank Steve Fletcher for designing ARMS and giving me the opportunity to work on it. In addition, Arthur thanks Daniel Fedorin [(@DanilaFe)](https://github.com/DanilaFe) for being available for general advice on
